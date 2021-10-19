@@ -34,7 +34,7 @@
 
 ## Запуск:
   ```bash
-  python3 miner2mqtt/m2m/m2m.py
+  python3 m2m/m2m.py
   ```
 
 ## Обновление:
