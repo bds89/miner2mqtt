@@ -2,8 +2,8 @@ MINER: Trex
 MQTT:
   TOPIC: miner2mqtt/rig0
   HOST: 192.168.0.120
-  USERNAME: bds89
-  PASS: Bodal2605%
+  USERNAME: username
+  PASS: pass
 INTERVAL: 300
 INCLUDE:
 - active_pool
