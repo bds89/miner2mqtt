@@ -4,12 +4,20 @@
 
 <img src="screenshots/ha.jpg" width="400"> <img src="screenshots/ha_t.jpg" width="400">
 
+## Изменения
+
+<details>
+  <summary>1.0</summary>
+
+- EXE файл для Windows
+</details>
+
 ## Описание
 
 **Поддерживаемые ОС**
 
 - Linux
-- Windows (не тестировалось, и пока нет установщика)
+- Windows (не тестировалось)
 
 **Поддерживаемые майнеры**
 
