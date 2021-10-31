@@ -1,0 +1,12 @@
+MINER: Trex
+SUDO_PASS: pass
+MQTT:
+  TOPIC: miner2mqtt/rig0
+  HOST: 192.168.0.120
+  USERNAME: username
+  PASS: pass
+INTERVAL: 300
+INCLUDE:
+- active_pool
+- gpus
+EXCLUDE: {}
