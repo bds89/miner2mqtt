@@ -2,7 +2,7 @@
 
 Доступ к вашему GPU майнеру через MQTT.
 
-<img src="screenshots/ha.jpg" width="300"> <img src="screenshots/ha_t.jpg" width="300"> <img src="screenshots/ha_fan.jpeg" width="300">
+<img src="screenshots/ha.jpg" width="250"> <img src="screenshots/ha_t.jpg" width="250"> <img src="screenshots/ha_fan.jpeg" width="250">
 
 ## Изменения
 
