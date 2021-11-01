@@ -79,7 +79,7 @@
 MINER: Trex
     #выбор GPU майнера, на данный моменр только T-rex
 SUDO_PASS: pass
-    #выбор GPU майнера, на данный моменр только T-rex
+    #пароль суперпользователя, для изменения power_limit
 MQTT:
   TOPIC: miner2mqtt/rig0
   HOST: 192.168.0.120
