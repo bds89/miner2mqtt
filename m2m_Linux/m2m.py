@@ -36,7 +36,7 @@ def get_gpu_info():
             else: mqtt_publish("OFF", "/from_miner/"+str(gpu[0])+"/state")
             #fan
             mqtt_publish(gpu[1]["fan_speed"], "/from_miner/"+str(gpu[0])+"/fan_speed")
-            if not MEMBER["fan_speed"]:
+            if len(MEMBER["fan_speed"]) < gpu[0]+1:
                 globals()["MEMBER"]["fan_speed"].append(gpu[1]["fan_speed"])
             else: 
                 globals()["MEMBER"]["fan_speed"][gpu[0]] = gpu[1]["fan_speed"]
@@ -48,7 +48,7 @@ def get_gpu_info():
                     mqtt_publish(MEMBER["fan_mode"][gpu[0]], "/from_miner/"+str(gpu[0])+"/fan_mode")
             else: mqtt_publish(MEMBER["fan_mode"][gpu[0]], "/from_miner/"+str(gpu[0])+"/fan_mode")
             
-            if re.search(r"[Mm][Aa][Nn][Uu][Aa][Ll]", MEMBER["fan_mode"][gpu[0]]) and gpu[1]["fan_speed"] == 0:
+            if len(MEMBER["fan_mode"]) >= gpu[0]+1 and re.search(r"[Mm][Aa][Nn][Uu][Aa][Ll]", MEMBER["fan_mode"][gpu[0]]) and gpu[1]["fan_speed"] == 0:
                 state = "OFF"
                 mqtt_publish(state, "/from_miner/"+str(gpu[0])+"/fan_state")
                 
@@ -59,7 +59,7 @@ def get_gpu_info():
             else: globals()["MEMBER"]["fan_state"][gpu[0]] = state
 
                 
-    except(KeyError): ("WARNING: Can't update fan in MQTT")
+    except(KeyError): print("WARNING: Can't update fan in MQTT")
     
     if "INCLUDE" in CONFIG and CONFIG["INCLUDE"]:
         answ = {}

@@ -78,6 +78,8 @@
 ```yaml
 MINER: Trex
     #выбор GPU майнера, на данный моменр только T-rex
+SUDO_PASS: pass
+    #Пароль SUDO
 MQTT:
   TOPIC: miner2mqtt/rig0
   HOST: 192.168.0.120
