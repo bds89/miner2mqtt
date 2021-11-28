@@ -2,7 +2,7 @@
 
 Доступ к вашему GPU майнеру через MQTT.
 
-<img src="screenshots/ha.jpg" width="400"> <img src="screenshots/ha_t.jpg" width="400">
+<img src="screenshots/ha.jpg" width="250"> <img src="screenshots/ha_t.jpg" width="250"> <img src="screenshots/ha_fan.jpeg" width="250">
 
 ## Изменения
 
@@ -14,9 +14,9 @@
 <details>
   <summary>1.1</summary>
 
-- Управление вентиляторами видеокарт
+- Управление вентиляторами видеокарт (Linux)
 
-- Упраление power limit видеокарт (требуется SU)
+- Упраление power limit видеокарт (требуется SU) (Linux)
 </details>
 
 ## Описание
@@ -79,7 +79,11 @@
 MINER: Trex
     #выбор GPU майнера, на данный моменр только T-rex
 SUDO_PASS: pass
+<<<<<<< HEAD
     #Пароль SUDO
+=======
+    #пароль суперпользователя, для изменения power_limit
+>>>>>>> 841cf104de781b5082350924c14c542a6e909d9c
 MQTT:
   TOPIC: miner2mqtt/rig0
   HOST: 192.168.0.120
