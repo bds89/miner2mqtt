@@ -40,7 +40,7 @@ def get_gpu_info():
                 globals()["MEMBER"]["fan_speed"].append(gpu[1]["fan_speed"])
             else: 
                 globals()["MEMBER"]["fan_speed"][gpu[0]] = gpu[1]["fan_speed"]
-            if not MEMBER["fan_mode"]:
+            if len(MEMBER["fan_mode"]) < gpu[0]+1:
                 text = os.popen('nvidia-settings -q "[gpu:'+str(gpu[0])+']/GPUFanControlstate"').read()
                 fan_mode = re.findall(r"gpu:\d+[]][)]: (\d)", text)
                 if fan_mode:
