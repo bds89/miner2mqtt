@@ -1,4 +1,5 @@
-MINER: Trex
+MINER: danila-miner
+danila_command: "/home/ferma2/TON_miner/danila-miner run https://server1.whalestonpool.com your_walet_adress"
 SUDO_PASS: pass
 MQTT:
   TOPIC: miner2mqtt/rig0
@@ -9,4 +10,5 @@ INTERVAL: 300
 INCLUDE:
 - active_pool
 - gpus
+- sys_params
 EXCLUDE: {}

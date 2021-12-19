@@ -1,4 +1,4 @@
-import yaml, datetime, time, sys, threading, urllib.request, inspect, os, json, platform, requests, re, subprocess
+import yaml, datetime, time, sys, threading, urllib.request, inspect, os, json, platform, requests, re, subprocess, psutil
 import paho.mqtt.subscribe as subscribe
 import paho.mqtt.publish as publish
 
@@ -14,18 +14,97 @@ def get_script_dir(follow_symlinks=True):
         path = os.path.realpath(path)
     return os.path.dirname(path)
 
+def run(command):
+    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False, encoding="utf-8", bufsize=1, universal_newlines=True)
+    while True:
+        line = process.stderr.readline().rstrip()
+        if not line and process.poll() != None:
+            break
+        yield line
+
+def danila_parser(command):
+    for log in run(command):
+        print("danila log: "+log)
+        matches_gpus_name = re.findall(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3} [|] Starting benchmarks for device (.+)...", log)
+        if matches_gpus_name: 
+            for name in matches_gpus_name: globals()["GPUS_names"].append(name) 
+        if not GPUS:
+            matches_gpus = re.findall(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) [|] Total devices: (\d+)", log)
+            if matches_gpus: globals()["GPUS"] = int(matches_gpus[0][1])
+        matches = re.findall(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) [|] Total system hashrate (\d+.\d+) ([KkMG])hash/s, (\d+.\d+)s, (\d+) shares found", log)
+        if matches:
+            time_timestam = datetime.datetime.strptime(matches[0][0], "%Y-%m-%d %H:%M:%S,%f")
+            hash = float(matches[0][1])*CONVERT[matches[0][2]]
+            globals()["AVG_hash_now"][time_timestam] = hash
+            globals()["AVG_hash_60"][time_timestam] = hash
+            delta_time = matches[0][3]
+            globals()["SHARES"] = matches[0][4]
+            # print("{0}\nHASH: {1}; DELTA Time: {2}; SHARES: {3}".format(time_timestam, hash, delta_time, shares))
+
+
 def get_gpu_info():
     try:
         if "MINER" in CONFIG:
             if CONFIG["MINER"] == "Trex":
                 contents = urllib.request.urlopen("http://127.0.0.1:4067/summary").read()
                 globals()["CONTENTS"] = contents
+                data = json.loads(contents)
+            #Для данилы
+            elif CONFIG["MINER"] == "danila-miner": 
+                #обновим средний хэш
+                if AVG_hash_now:
+                    for time_st in list(AVG_hash_now):
+                        if datetime.datetime.now() - time_st > datetime.timedelta(seconds=CONFIG["INTERVAL"]):
+                            AVG_hash_now.pop(time_st)
+                if AVG_hash_now: 
+                    hash_now = AVG_hash_now[list(AVG_hash_now)[-1]]
+                else:
+                    hash_now = 0
+                i = 0
+                hash_60 = 0
+                if AVG_hash_60:
+                    for time_st in list(AVG_hash_60):
+                        if datetime.datetime.now() - time_st > datetime.timedelta(minutes=60):
+                            AVG_hash_60.pop(time_st)
+                        else:
+                            hash_60 += AVG_hash_60[time_st]
+                            i += 1
+                    hash_60 = hash_60/i
+                
+                data = {}
+                data["gpus"] = []
+                for gpu in range(GPUS):
+                    if len(globals()["GPUS_names"]) < gpu+1:
+                        globals()["GPUS_names"].append("unknown card")
+                    #Возьмем данные с драйвера
+                    p = subprocess.Popen(['sudo', '-S', 'nvidia-smi', '-i', str(gpu), '-q', '-x'], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+                    text = p.communicate(CONFIG["SUDO_PASS"] + '\n')[0]
+                    match_fan = re.findall(r".*<fan_speed>(\d+) %</fan_speed>.*", text)
+                    if match_fan: fan_speed = float(match_fan[0])
+                    match_temp = re.findall(r".*<gpu_temp>(\d+) C</gpu_temp>.*", text)
+                    if match_temp: gpu_temp = float(match_temp[0])
+                    match_pl = re.findall(r".*<power_limit>(\d+.\d+) W</power_limit>.*", text)
+                    if match_pl: power_limit = float(match_pl[0])
+                    #создадим словарь как в майнере.
+                    data["gpus"].append({"hashrate":hash_now, "hashrate_hour":hash_60, "name": globals()["GPUS_names"][gpu], "power":power_limit, "fan_speed":int(fan_speed), "temperature":gpu_temp, "efficiency":round(hash_now/power_limit), "shares":SHARES})
+
+                
             else: print("WARNING: unknown miner")
         else: print("WARNING: unknown miner")
     except:
         print("WARNING: No data from miner")
         return
-    data = json.loads(contents)
+    #возьмем еще параметры компьютера из psutil
+    USED_RAM = psutil.virtual_memory()[2]
+    CPU_temp = psutil.sensors_temperatures(fahrenheit=False)["coretemp"][0][1]
+    CPU_freq = round(psutil.cpu_freq(percpu=False)[0])
+    fan_list = psutil.sensors_fans()
+    CPU_FAN = "no fan"
+    for key, value in fan_list.items():
+        for i in value:
+            if i[1]>0:
+                CPU_FAN = i[1]
+    data["sys_params"] = {"used_ram":USED_RAM, "cpu_temp":CPU_temp, "cpu_freq": CPU_freq, "cpu_fan":CPU_FAN}
     #обновим power_limit, fan
     try:
         for gpu in enumerate(data["gpus"]):
@@ -55,7 +134,7 @@ def get_gpu_info():
             else: 
                 state = "ON"
                 mqtt_publish(state, "/from_miner/"+str(gpu[0])+"/fan_state")
-            if not MEMBER["fan_state"]: globals()["MEMBER"]["fan_state"].append(state)
+            if len(MEMBER["fan_state"]) < gpu[0]+1: globals()["MEMBER"]["fan_state"].append(state)
             else: globals()["MEMBER"]["fan_state"][gpu[0]] = state
 
                 
@@ -127,7 +206,7 @@ def fan_mode(fan, card):
     if re.search(r"[Aa][Uu][Tt][Oo]", fan):
         text = os.popen('nvidia-settings -a "[gpu:'+str(card)+']/GPUFanControlstate=0"').read()
     elif re.search(r"[Mm][Aa][Nn][Uu][Aa][Ll]", fan):
-        text = os.popen('nvidia-settings -a "[gpu:'+str(card)+']/GPUFanControlstate=1" -a ["fan:0]/GPUTargetFanSpeed='+str(MEMBER["fan_speed"][card])+'" -a ["fan:1]/GPUTargetFanSpeed='+str(MEMBER["fan_speed"][card])+'"').read()
+        text = os.popen('nvidia-settings -a "[gpu:'+str(card)+']/GPUFanControlstate=1" -a ["fan:'+str(card)+']/GPUTargetFanSpeed='+str(MEMBER["fan_speed"][card])+'" -a ["fan:'+str(card+1)+']/GPUTargetFanSpeed='+str(MEMBER["fan_speed"][card])+'"').read()
     else:
         print("WARNING: can't change fan mode, bad value")
         return(False)
@@ -149,7 +228,7 @@ def fan_speed(fan, card):
     if fan < 0:
         print("INFO: fan speed must be positive")
         return(False)
-    text = os.popen('nvidia-settings -a "[gpu:'+str(card)+']/GPUFanControlstate=1" -a ["fan:0]/GPUTargetFanSpeed='+str(fan)+'" -a ["fan:1]/GPUTargetFanSpeed='+str(fan)+'"').read()
+    text = os.popen('nvidia-settings -a "[gpu:'+str(card)+']/GPUFanControlstate=1" -a ["fan:'+str(card)+']/GPUTargetFanSpeed='+str(fan)+'" -a ["fan:'+str(card+1)+']/GPUTargetFanSpeed='+str(fan)+'"').read()
     if "assigned value" in text:
         globals()["MEMBER"]["fan_mode"][card] = "manual"
         print("INFO: "+text)
@@ -273,6 +352,16 @@ if __name__ == '__main__':
         CONFIG = yaml.load(f.read(), Loader=yaml.FullLoader)
     
     MEMBER = {"fan_state":[], "fan_mode":[], "fan_speed":[]} #Запоминаем всякую всячину
+    #Данила майнер
+    if CONFIG["MINER"] == "danila-miner":
+        CONVERT = {"k":1*10**3, "K":1*10**3, "M":1*10**6, "G":1*10**9}
+        AVG_hash_now = {}
+        AVG_hash_60 = {}
+        SHARES = 0
+        GPUS = 0
+        GPUS_names = []
+        threading.Thread(target=danila_parser, args=(CONFIG["danila_command"].split(),)).start() #запускаем данилу
+
     threading.Thread(target=polls, args=(CONFIG["INTERVAL"],)).start() #запускаем опрос майнера
     threading.Thread(target=mqtt_listen, args=(CONFIG["MQTT"]["TOPIC"],CONFIG["MQTT"]["HOST"],CONFIG["MQTT"]["USERNAME"],CONFIG["MQTT"]["PASS"],)).start() #подписываемся на топик
 
