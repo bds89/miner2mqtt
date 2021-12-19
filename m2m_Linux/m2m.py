@@ -206,7 +206,7 @@ def fan_mode(fan, card):
     if re.search(r"[Aa][Uu][Tt][Oo]", fan):
         text = os.popen('nvidia-settings -a "[gpu:'+str(card)+']/GPUFanControlstate=0"').read()
     elif re.search(r"[Mm][Aa][Nn][Uu][Aa][Ll]", fan):
-        text = os.popen('nvidia-settings -a "[gpu:'+str(card)+']/GPUFanControlstate=1" -a ["fan:'+str(card)+']/GPUTargetFanSpeed='+str(MEMBER["fan_speed"][card])+'" -a ["fan:'+str(card+1)+']/GPUTargetFanSpeed='+str(MEMBER["fan_speed"][card])+'"').read()
+        text = os.popen('nvidia-settings -a "[gpu:'+str(card)+']/GPUFanControlstate=1" -a ["fan:'+str(card*2)+']/GPUTargetFanSpeed='+str(MEMBER["fan_speed"][card])+'" -a ["fan:'+str(card*2+1)+']/GPUTargetFanSpeed='+str(MEMBER["fan_speed"][card])+'"').read()
     else:
         print("WARNING: can't change fan mode, bad value")
         return(False)
@@ -228,7 +228,7 @@ def fan_speed(fan, card):
     if fan < 0:
         print("INFO: fan speed must be positive")
         return(False)
-    text = os.popen('nvidia-settings -a "[gpu:'+str(card)+']/GPUFanControlstate=1" -a ["fan:'+str(card)+']/GPUTargetFanSpeed='+str(fan)+'" -a ["fan:'+str(card+1)+']/GPUTargetFanSpeed='+str(fan)+'"').read()
+    text = os.popen('nvidia-settings -a "[gpu:'+str(card)+']/GPUFanControlstate=1" -a ["fan:'+str(card*2)+']/GPUTargetFanSpeed='+str(fan)+'" -a ["fan:'+str(card*2+1)+']/GPUTargetFanSpeed='+str(fan)+'"').read()
     if "assigned value" in text:
         globals()["MEMBER"]["fan_mode"][card] = "manual"
         print("INFO: "+text)
