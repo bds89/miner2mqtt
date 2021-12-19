@@ -279,7 +279,7 @@ EXCLUDE: {}
         "used_ram": 77.9,
         "cpu_temp": 40,
         "cpu_freq": 3300,
-        "cpu_fan": "no fan"
+        "cpu_fan": 986
   }
 }
 ```
@@ -306,7 +306,7 @@ EXCLUDE: {}
         "used_ram": 77.1,
         "cpu_temp": 37,
         "cpu_freq": 3300,
-        "cpu_fan": "no fan"
+        "cpu_fan": 986
     }
 }
 ```

@@ -90,7 +90,9 @@ def get_gpu_info():
 
                 
             else: print("WARNING: unknown miner")
-        else: print("WARNING: unknown miner")
+        else:
+            data = {} 
+            print("WARNING: unknown miner")
     except:
         print("WARNING: No data from miner")
         return
@@ -353,7 +355,7 @@ if __name__ == '__main__':
     
     MEMBER = {"fan_state":[], "fan_mode":[], "fan_speed":[]} #Запоминаем всякую всячину
     #Данила майнер
-    if CONFIG["MINER"] == "danila-miner":
+    if "MINER" in CONFIG and CONFIG["MINER"] == "danila-miner":
         CONVERT = {"k":1*10**3, "K":1*10**3, "M":1*10**6, "G":1*10**9}
         AVG_hash_now = {}
         AVG_hash_60 = {}
