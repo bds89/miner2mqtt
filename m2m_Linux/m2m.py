@@ -92,8 +92,9 @@ def get_gpu_info():
                     if match_temp: gpu_temp = float(match_temp[0])
                     match_pl = re.findall(r".*<power_limit>(\d+.\d+) W</power_limit>.*", text)
                     if match_pl: power_limit = float(match_pl[0])
+                    else: power_limit = 1
                     #создадим словарь как в майнере.
-                    data["gpus"].append({"hashrate":hash_now, "hashrate_hour":hash_60, "hashrate_minute":hash_1, "name": globals()["GPUS_names"][gpu], "power":power_limit, "fan_speed":int(fan_speed), "temperature":gpu_temp, "efficiency":round(hash_now/power_limit), "shares":SHARES})
+                    data["gpus"].append({"hashrate":hash_now, "hashrate_hour":hash_60, "hashrate_minute":hash_1, "name": globals()["GPUS_names"][gpu], "power":power_limit, "fan_speed":int(fan_speed), "temperature":gpu_temp, "efficiency":round(hash_1/power_limit), "shares":SHARES})
 
                 
             else: print("WARNING: unknown miner")
