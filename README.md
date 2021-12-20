@@ -44,14 +44,14 @@
 - Возможность выборочной публикации (`INCLUDE` и `EXCLUDE` параметры в `config.yaml`)
 - Обновление с указанным интервалом или по требованию (путем публикации `"ON"` в `ваш_топик/to_miner/refresh`)
 <details>
-  <summary>Управление вентиляторами видеокарт</summary>
+  <summary>Управление вентиляторами видеокарт (version 1.1+)</summary>
 
 - Изменение скорости: публикация значения в процентах в топик `ваш_топик/to_miner/<GPU_number>/fan_speed`, топик с текущими значениями в процентах `ваш_топик/from_miner/<GPU_number>/fan_speed`. 
 - Включение вентилятора: публикация значения `ON` в топик `ваш_топик/to_miner/<GPU_number>/fan_state`, топик с текущим состоянием `ваш_топик/from_miner/<GPU_number>/fan_state`.
 - Изменение режима auto/manual: публикация значения `auto` / `manual`в топик `ваш_топик/to_miner/<GPU_number>/fan_mode`, топик с текущим режимом `ваш_топик/from_miner/<GPU_number>/fan_mode`.
 </details>
 <details>
-  <summary>Управление power limit видеокарт</summary>
+  <summary>Управление power limit видеокарт (version 1.1+)</summary>
 
 - Изменение power limit: публикация значения в процентах в топик `ваш_топик/to_miner/<GPU_number>/power_limit`, топик с текущими значениями в процентах `ваш_топик/from_miner/<GPU_number>/power_limit`. 
 - Для изменения power limit требуются права SU, необходимо либо вписать `SUDO_PASS` в `config.yaml` либо запускать `m2m.py` с правами sudo.
