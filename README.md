@@ -87,6 +87,8 @@
 ```yaml
 MINER: Trex/danila-miner
     #выбор GPU майнера
+danila_command: "/home/ferma2/TON_miner/danila-miner run https://server1.whalestonpool.com your_walet_adress"
+    #Команда для запуска danila-miner
 SUDO_PASS: pass
     #пароль суперпользователя, для изменения power_limit
 MQTT:
@@ -294,6 +296,7 @@ EXCLUDE: {}
         {
             "hashrate": 1019340000,
             "hashrate_hour": 1019340000,
+            "hashrate_minute": 1019340000,
             "name": "NVIDIA GeForce RTX 3060 Ti",
             "power": 156,
             "fan_speed": 40,
@@ -322,7 +325,7 @@ sensor:
     name: "GPU0"
     state_topic: "miner2mqtt/rig0"
     unit_of_measurement: "MH/s"
-    value_template: "{{ (value_json.gpus.0.hashrate/1000000)|round(2) }}"
+    value_template: "{{ (value_json.gpus.0.hashrate_minute/1000000)|round(2) }}"
     device_class: power
     expire_after: 660
     json_attributes_topic: "miner2mqtt/rig0"

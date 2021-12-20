@@ -52,14 +52,21 @@ def get_gpu_info():
             #Для данилы
             elif CONFIG["MINER"] == "danila-miner": 
                 #обновим средний хэш
+                i = 0
+                hash_1 = 0
                 if AVG_hash_now:
                     for time_st in list(AVG_hash_now):
+                        if datetime.datetime.now() - time_st < datetime.timedelta(seconds=60):
+                            hash_1 += AVG_hash_now[time_st]
+                            i += 1
                         if datetime.datetime.now() - time_st > datetime.timedelta(seconds=CONFIG["INTERVAL"]):
                             AVG_hash_now.pop(time_st)
+                    hash_1 = hash_1/i
                 if AVG_hash_now: 
                     hash_now = AVG_hash_now[list(AVG_hash_now)[-1]]
                 else:
                     hash_now = 0
+                    hash_1 = 0
                 i = 0
                 hash_60 = 0
                 if AVG_hash_60:
@@ -86,7 +93,7 @@ def get_gpu_info():
                     match_pl = re.findall(r".*<power_limit>(\d+.\d+) W</power_limit>.*", text)
                     if match_pl: power_limit = float(match_pl[0])
                     #создадим словарь как в майнере.
-                    data["gpus"].append({"hashrate":hash_now, "hashrate_hour":hash_60, "name": globals()["GPUS_names"][gpu], "power":power_limit, "fan_speed":int(fan_speed), "temperature":gpu_temp, "efficiency":round(hash_now/power_limit), "shares":SHARES})
+                    data["gpus"].append({"hashrate":hash_now, "hashrate_hour":hash_60, "hashrate_minute":hash_1, "name": globals()["GPUS_names"][gpu], "power":power_limit, "fan_speed":int(fan_speed), "temperature":gpu_temp, "efficiency":round(hash_now/power_limit), "shares":SHARES})
 
                 
             else: print("WARNING: unknown miner")
