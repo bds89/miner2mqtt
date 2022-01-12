@@ -1,6 +1,7 @@
 import yaml, datetime, time, sys, threading, urllib.request, inspect, os, json, platform, requests, re, subprocess, psutil
 import paho.mqtt.subscribe as subscribe
 import paho.mqtt.publish as publish
+import paho.mqtt
 
 bool_conv = {"true": "ON", "false": "OFF", "ON":True, "OFF":False, "0":"auto", "1": "manual"}
 
@@ -255,7 +256,7 @@ def mqtt_publish(contents, _topic="", retain=False, multiple=False):
     try:
         if multiple: publish.multiple(msgs=contents, retain=retain, hostname=host, auth = {'username':username, 'password':password})
         else: publish.single(topic, contents, retain=retain, hostname=host, auth = {'username':username, 'password':password})
-    except(TimeoutError): print("WARNING: Can't connect to MQTT")
+    except(TimeoutError, ConnectionRefusedError, paho.mqtt.MQTTException): print("WARNING: Can't connect to MQTT")
         
 
 def polls(interval):
@@ -347,7 +348,7 @@ def on_message(client, userdata, message):  #Здесь все команды п
 def mqtt_listen(topic, host, username, password):
     topic = topic+"/to_miner/#"
     try: subscribe.callback(on_message, topic, hostname=host, auth = {'username':username, 'password':password})
-    except(TimeoutError): print("WARNING: Can't connect to MQTT")
+    except(TimeoutError, ConnectionRefusedError, paho.mqtt.MQTTException): print("WARNING: Can't connect to MQTT")
 
 if __name__ == '__main__':
     system = platform.system()

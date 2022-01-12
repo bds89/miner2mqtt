@@ -1,10 +1,10 @@
 MINER: danila-miner
 danila_command: "/home/ferma2/TON_miner/danila-miner run https://server1.whalestonpool.com your_walet_adress"
-SUDO_PASS: pass
+SUDO_PASS: "1234"
 MQTT:
   TOPIC: miner2mqtt/rig0
   HOST: 192.168.0.120
-  USERNAME: username
+  USERNAME: user
   PASS: pass
 INTERVAL: 300
 INCLUDE:
