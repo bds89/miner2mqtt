@@ -389,11 +389,12 @@ if __name__ == '__main__':
             if "TrexAPI" in CONFIG: url1 = str(CONFIG["TrexAPI"])
             else: url1 = "http://127.0.0.1:4067"
             password = str(CONFIG["TrexAPIPASS"])
-            try: contents = urllib.request.urlopen(url1+"/login?password="+password).read()
+            try: 
+                contents = urllib.request.urlopen(url1+"/login?password="+password).read()
+                data = json.loads(contents)
+                if data["success"] == 1: SID = data["sid"]
+                else: print("WARNING: Trex wrong password")
             except: ("WARNING: No data from miner")
-            data = json.loads(contents)
-            if data["success"] == 1: SID = data["sid"]
-            else: print("WARNING: Trex wrong password")
             
     #Данила майнер
     if "MINER" in CONFIG and CONFIG["MINER"] == "danila-miner":
