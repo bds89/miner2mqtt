@@ -1,11 +1,12 @@
-MINER: danila-miner
-danila_command: "/home/ferma2/TON_miner/danila-miner run https://server1.whalestonpool.com your_walet_adress"
-SUDO_PASS: "1234"
+MINER: Trex
+TrexAPI: http://127.0.0.1:4067
+TrexAPIPASS: YourWebGuiPassword
+SUDO_PASS: "0"
 MQTT:
   TOPIC: miner2mqtt/rig0
   HOST: 192.168.0.120
-  USERNAME: user
-  PASS: pass
+  USERNAME: mqttusername
+  PASS: mqttpass
 INTERVAL: 300
 INCLUDE:
 - active_pool

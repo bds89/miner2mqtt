@@ -27,6 +27,12 @@
 
 - Исправление работы регулировки вентиляторов видекарт с двумя и тремя вентиляторами. (Для видеокарт с одним вентилятором возможны проблемы, не на чем протестировать)
 </details>
+<details>
+  <summary>1.3(Linux)</summary>
+
+- Поддержка APIKEY для  Trex. Не обязательный параметр `TrexAPIPASS` в `config.yaml`
+- Поддержка API адреса для Trex. Не обязательный параметр `TrexAPI` в `config.yaml`
+</details>
 ## Описание
 
 **Поддерживаемые ОС**
@@ -67,12 +73,12 @@
   git clone https://github.com/bds89/miner2mqtt.git
   cd miner2mqtt
   sudo python3 setup.py install   
-  gedit m2m/config.yaml   #Редактируем config.yaml
+  gedit m2m_Linux/config.yaml   #Редактируем config.yaml
   ```
 
 ## Запуск:
   ```bash
-  python3 m2m/m2m.py
+  python3 m2m_Linux/m2m.py
   ```
 
 ## Обновление:
@@ -81,14 +87,18 @@
   cd miner2mqtt
   git pull origin
   ```
-- Скопируйте ваш сохраненный `config.yaml` в `miner2mqtt/m2m`
+- Скопируйте ваш сохраненный `config.yaml` в `miner2mqtt/m2m_Linux`
   
 ## Редактирование config.yaml:
 ```yaml
 MINER: Trex/danila-miner
-    #выбор GPU майнера
+    #выбор GPU майнера (*required)
 danila_command: "/home/ferma2/TON_miner/danila-miner run https://server1.whalestonpool.com your_walet_adress"
     #Команда для запуска danila-miner
+TrexAPI: http://127.0.0.1:4067
+    #выбор адреса API для Trex майнера, если отличается от стандартного
+TrexAPIPASS: YourWebGuiPassword
+    #ваш пароль для Trex майнера
 SUDO_PASS: pass
     #пароль суперпользователя, для изменения power_limit
 MQTT:
@@ -98,7 +108,7 @@ MQTT:
   PASS: pass
     #Подключение к вашему MQTT
 INTERVAL: 300
-    #интервал сбора и публикации информации в секундах
+    #интервал сбора и публикации информации в секундах (*required)
 INCLUDE:
 - active_pool
 - gpus
@@ -325,7 +335,7 @@ sensor:
     name: "GPU0"
     state_topic: "miner2mqtt/rig0"
     unit_of_measurement: "MH/s"
-    value_template: "{{ (value_json.gpus.0.hashrate_minute/1000000)|round(2) }}"
+    value_template: "{{ (value_json.gpus.0.hashrate_minute|float/1000000)|round(2) }}"
     device_class: power
     expire_after: 660
     json_attributes_topic: "miner2mqtt/rig0"
@@ -346,7 +356,7 @@ sensor:
     name: "GPU0_hash"
     state_topic: "miner2mqtt/rig0"
     unit_of_measurement: "MH/s"
-    value_template: "{{ (value_json.gpus.0.hashrate_minute/1000000)|round(2) }}"
+    value_template: "{{ (value_json.gpus.0.hashrate_minute|float/1000000)|round(2) }}"
     device_class: power
     expire_after: 660
     json_attributes_topic: "miner2mqtt/rig0"

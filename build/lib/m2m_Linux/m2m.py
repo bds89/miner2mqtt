@@ -5,6 +5,7 @@ import paho.mqtt
 
 bool_conv = {"true": "ON", "false": "OFF", "ON":True, "OFF":False, "0":"auto", "1": "manual"}
 
+
 def get_script_dir(follow_symlinks=True):
     if getattr(sys, 'frozen', False): # py2exe, PyInstaller, cx_Freeze
         path = os.path.abspath(sys.executable)
@@ -25,6 +26,9 @@ def run(command):
 def danila_parser(command):
     for log in run(command):
         print("danila log: "+log)
+        matches_gpus_name = re.findall(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3} [|] Starting benchmarks for device (.+)...", log)
+        if matches_gpus_name: 
+            for name in matches_gpus_name: globals()["GPUS_names"].append(name) 
         if not GPUS:
             matches_gpus = re.findall(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) [|] Total devices: (\d+)", log)
             if matches_gpus: globals()["GPUS"] = int(matches_gpus[0][1])
@@ -43,15 +47,11 @@ def get_gpu_info():
     try:
         if "MINER" in CONFIG:
             if CONFIG["MINER"] == "Trex":
-                if "TrexAPI" in CONFIG: url1 = str(CONFIG["TrexAPI"])
-                else: url1 = "http://127.0.0.1:4067"
-                if "SID" in globals(): url = url1+"/summary?sid="+SID
-                else: url = url1+"/summary"
-                contents = urllib.request.urlopen(url).read()
+                contents = urllib.request.urlopen("http://127.0.0.1:4067/summary").read()
                 globals()["CONTENTS"] = contents
                 data = json.loads(contents)
             #Для данилы
-            elif CONFIG["MINER"] == "danila-miner":
+            elif CONFIG["MINER"] == "danila-miner": 
                 #обновим средний хэш
                 i = 0
                 hash_1 = 0
@@ -81,20 +81,12 @@ def get_gpu_info():
                 
                 data = {}
                 data["gpus"] = []
-                gpu_name = ""
-                gpu_vendor = ""
-                fan_speed = 0
-                gpu_temp = 0
-                power_limit = 0
                 for gpu in range(GPUS):
+                    if len(globals()["GPUS_names"]) < gpu+1:
+                        globals()["GPUS_names"].append("unknown card")
                     #Возьмем данные с драйвера
                     p = subprocess.Popen(['sudo', '-S', 'nvidia-smi', '-i', str(gpu), '-q', '-x'], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
                     text = p.communicate(CONFIG["SUDO_PASS"] + '\n')[0]
-                    match_name = re.findall(r".*<product_name>(.+)</product_name>.*", text)
-                    if match_name: gpu_name = match_name[0]
-                    match_vendor = re.findall(r".*<product_brand>(.+)</product_brand>.*", text)
-                    if match_vendor: gpu_vendor = match_vendor[0]
-
                     match_fan = re.findall(r".*<fan_speed>(\d+) %</fan_speed>.*", text)
                     if match_fan: fan_speed = float(match_fan[0])
                     match_temp = re.findall(r".*<gpu_temp>(\d+) C</gpu_temp>.*", text)
@@ -103,12 +95,7 @@ def get_gpu_info():
                     if match_pl: power_limit = float(match_pl[0])
                     else: power_limit = 1
                     #создадим словарь как в майнере.
-                    if gpu == 0:
-                        data["gpu_total"] = GPUS
-                        data["hashrate"] = hash_now
-                        data["hashrate_minute"] = hash_1
-                        data["hashrate_hour"] = hash_60
-                    data["gpus"].append({"power":power_limit, "temperature":gpu_temp, "hashrate":hash_now, "hashrate_minute":hash_1, "hashrate_hour":hash_60,  "name": gpu_name, "vendor": gpu_vendor,  "fan_speed":int(fan_speed), "efficiency":round(hash_1/power_limit), "shares":SHARES})
+                    data["gpus"].append({"hashrate":hash_now, "hashrate_hour":hash_60, "hashrate_minute":hash_1, "name": globals()["GPUS_names"][gpu], "power":power_limit, "fan_speed":int(fan_speed), "temperature":gpu_temp, "efficiency":round(hash_1/power_limit), "shares":SHARES})
 
                 
             else: print("WARNING: unknown miner")
@@ -134,7 +121,7 @@ def get_gpu_info():
         for gpu in enumerate(data["gpus"]):
             #power_limit
             mqtt_publish(gpu[1]["power"], "/from_miner/"+str(gpu[0])+"/power_limit")
-            if gpu[1]["power"] > 5:
+            if gpu[1]["power"] > 20:
                 mqtt_publish("ON", "/from_miner/"+str(gpu[0])+"/state")
             else: mqtt_publish("OFF", "/from_miner/"+str(gpu[0])+"/state")
             #fan
@@ -162,7 +149,7 @@ def get_gpu_info():
             else: globals()["MEMBER"]["fan_state"][gpu[0]] = state
 
                 
-    except(KeyError): print("WARNING: Can't update power limit and fan in MQTT")
+    except(KeyError): print("WARNING: Can't update fan in MQTT")
     
     if "INCLUDE" in CONFIG and CONFIG["INCLUDE"]:
         answ = {}
@@ -176,17 +163,13 @@ def get_gpu_info():
                 if key in CONFIG["EXCLUDE"]:
                     answ.pop(key)
     if "answ" in locals():
-        data_answ = {"code": 200, "text": "success", "data": answ}
-    return(data_answ)
+        contents = json.dumps(answ)
+    return(contents)
 
 def gpu_pause(pause, card):
     if "MINER" in CONFIG:
         if CONFIG["MINER"] == "Trex":
-            if "TrexAPI" in CONFIG: url1 = str(CONFIG["TrexAPI"])
-            else: url1 = "http://127.0.0.1:4067"
-            if "SID" in globals(): url = url1+"/control?sid="+SID
-            else: url = url1+"/control"
-            requests.post(url, json={"pause": "{0}:{1}".format(pause, card)})
+            requests.post('http://127.0.0.1:4067/control', json={"pause": "{0}:{1}".format(pause, card)})
             print({"pause": "{0}:{1}".format(pause, card)})
         else: print("WARNING: can't pause this mainer")
     else: print("WARNING: can't pause this mainer")
@@ -284,9 +267,8 @@ def polls(interval):
             time.sleep(5)
         else:
             gpu_info = get_gpu_info()
-            if gpu_info:
-                mqtt_publish(json.dumps(gpu_info["data"]))
-                mqtt_publish("OFF", "/to_miner/refresh")
+            mqtt_publish(gpu_info)
+            mqtt_publish("OFF", "/to_miner/refresh")
             time.sleep(interval)
 
 def on_message(client, userdata, message):  #Здесь все команды получаемые ботом
@@ -296,8 +278,7 @@ def on_message(client, userdata, message):  #Здесь все команды п
     if topic == CONFIG["MQTT"]["TOPIC"]+"/to_miner/refresh" and msg == "ON":
         print(topic +": "+msg)
         gpu_info = get_gpu_info()
-        if gpu_info:
-            mqtt_publish(json.dumps(gpu_info["data"]))
+        mqtt_publish(gpu_info)
         mqtt_publish("OFF", "/to_miner/refresh")
         return
 
@@ -305,12 +286,11 @@ def on_message(client, userdata, message):  #Здесь все команды п
     if re.search(CONFIG["MQTT"]["TOPIC"]+r"/to_miner/[\d+]/state", topic):
         card = re.findall(r".+/(\d+)/state", topic)
         if card and msg in bool_conv:
-            if msg == "ON": pause = "false"
-            else: pause = "true"
+            pause = bool_conv[msg]
             gpu_pause(pause, card[0])
-            time.sleep(2)
+            time.sleep(10)
             gpu_info = get_gpu_info()
-            mqtt_publish(json.dumps(gpu_info["data"]))
+            mqtt_publish(gpu_info)
         return
 
     #Изменение power limit
@@ -323,7 +303,7 @@ def on_message(client, userdata, message):  #Здесь все команды п
             if sucses:
                 time.sleep(5)
                 gpu_info = get_gpu_info()
-                mqtt_publish(json.dumps(gpu_info["data"])) 
+                mqtt_publish(gpu_info) 
         return
 
     #Изменение fan (on/off)
@@ -336,7 +316,7 @@ def on_message(client, userdata, message):  #Здесь все команды п
             if sucses:
                 time.sleep(10)
                 gpu_info = get_gpu_info()
-                mqtt_publish(json.dumps(gpu_info["data"]))
+                mqtt_publish(gpu_info)
         return
 
     #Изменение fan mode
@@ -349,7 +329,7 @@ def on_message(client, userdata, message):  #Здесь все команды п
             if sucses:
                 time.sleep(10)
                 gpu_info = get_gpu_info()
-                mqtt_publish(json.dumps(gpu_info["data"]))
+                mqtt_publish(gpu_info)
         return
 
     #Изменение fan speed
@@ -362,7 +342,7 @@ def on_message(client, userdata, message):  #Здесь все команды п
             if sucses:
                 time.sleep(10)
                 gpu_info = get_gpu_info()
-                mqtt_publish(json.dumps(gpu_info["data"]))
+                mqtt_publish(gpu_info)
         return
 
 def mqtt_listen(topic, host, username, password):
@@ -376,24 +356,13 @@ if __name__ == '__main__':
     elif system == "Windows": CONFIG_PATCH = get_script_dir()+"\config.yaml"
     else:
         try: CONFIG_PATCH = get_script_dir()+"/config.yaml" 
-        except:
+        except: 
             print("Not supported os")
             quit()
     with open(CONFIG_PATCH) as f:
         CONFIG = yaml.load(f.read(), Loader=yaml.FullLoader)
     
     MEMBER = {"fan_state":[], "fan_mode":[], "fan_speed":[]} #Запоминаем всякую всячину
-    #Trex майнер
-    if "MINER" in CONFIG and CONFIG["MINER"] == "Trex":
-        if "TrexAPIPASS" in CONFIG:
-            if "TrexAPI" in CONFIG: url1 = str(CONFIG["TrexAPI"])
-            else: url1 = "http://127.0.0.1:4067"
-            password = str(CONFIG["TrexAPIPASS"])
-            contents = urllib.request.urlopen(url1+"/login?password="+password).read()
-            data = json.loads(contents)
-            if data["success"] == 1: SID = data["sid"]
-            else: print("WARNING: Trex wrong password")
-            
     #Данила майнер
     if "MINER" in CONFIG and CONFIG["MINER"] == "danila-miner":
         CONVERT = {"k":1*10**3, "K":1*10**3, "M":1*10**6, "G":1*10**9}
@@ -401,10 +370,9 @@ if __name__ == '__main__':
         AVG_hash_60 = {}
         SHARES = 0
         GPUS = 0
+        GPUS_names = []
         threading.Thread(target=danila_parser, args=(CONFIG["danila_command"].split(),)).start() #запускаем данилу
 
-    if "MQTT" in CONFIG:
-        threading.Thread(target=polls, args=(CONFIG["INTERVAL"],)).start() #запускаем опрос майнера
-        threading.Thread(target=mqtt_listen, args=(CONFIG["MQTT"]["TOPIC"],CONFIG["MQTT"]["HOST"],CONFIG["MQTT"]["USERNAME"],CONFIG["MQTT"]["PASS"],)).start() #подписываемся на топик
-            
+    threading.Thread(target=polls, args=(CONFIG["INTERVAL"],)).start() #запускаем опрос майнера
+    threading.Thread(target=mqtt_listen, args=(CONFIG["MQTT"]["TOPIC"],CONFIG["MQTT"]["HOST"],CONFIG["MQTT"]["USERNAME"],CONFIG["MQTT"]["PASS"],)).start() #подписываемся на топик
 
