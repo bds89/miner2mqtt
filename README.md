@@ -472,3 +472,4 @@ number:
 ## Планы
 - Windows
 - cpuminer-gr-avx2
+- Android APP
