@@ -11,7 +11,7 @@ setup(
     long_description=open(join(dirname(__file__), 'README.md')).read(),
     include_package_data=True,
     install_requires=[
-        'yaml',
+        'PyYAML',
         'psutil',
         'paho-mqtt'
 ]
