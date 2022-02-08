@@ -40,53 +40,58 @@ def danila_parser(command):
 
 
 def get_gpu_info():
-    try:
-        if "MINER" in CONFIG:
-            if CONFIG["MINER"] == "Trex":
+    if "MINER" in CONFIG:
+        if CONFIG["MINER"] == "Trex":
+            try:
                 if "TrexAPI" in CONFIG: url1 = str(CONFIG["TrexAPI"])
                 else: url1 = "http://127.0.0.1:4067"
-                if "SID" in globals(): url = url1+"/summary?sid="+SID
+                if globals()["SID"]: url = url1+"/summary?sid="+SID
                 else: url = url1+"/summary"
                 contents = urllib.request.urlopen(url).read()
                 globals()["CONTENTS"] = contents
                 data = json.loads(contents)
-            #Для данилы
-            elif CONFIG["MINER"] == "danila-miner":
-                #обновим средний хэш
-                i = 0
+            except:
+                print("WARNING: No data from Trex miner. Trying to reconnect")
+                connectToTrex()
+                return
+        #Для данилы
+        elif CONFIG["MINER"] == "danila-miner":
+            #обновим средний хэш
+            i = 0
+            hash_1 = 0
+            if AVG_hash_now:
+                for time_st in list(AVG_hash_now):
+                    if datetime.datetime.now() - time_st < datetime.timedelta(seconds=60):
+                        hash_1 += AVG_hash_now[time_st]
+                        i += 1
+                    if datetime.datetime.now() - time_st > datetime.timedelta(seconds=CONFIG["INTERVAL"]):
+                        AVG_hash_now.pop(time_st)
+                hash_1 = hash_1/i
+            if AVG_hash_now: 
+                hash_now = AVG_hash_now[list(AVG_hash_now)[-1]]
+            else:
+                hash_now = 0
                 hash_1 = 0
-                if AVG_hash_now:
-                    for time_st in list(AVG_hash_now):
-                        if datetime.datetime.now() - time_st < datetime.timedelta(seconds=60):
-                            hash_1 += AVG_hash_now[time_st]
-                            i += 1
-                        if datetime.datetime.now() - time_st > datetime.timedelta(seconds=CONFIG["INTERVAL"]):
-                            AVG_hash_now.pop(time_st)
-                    hash_1 = hash_1/i
-                if AVG_hash_now: 
-                    hash_now = AVG_hash_now[list(AVG_hash_now)[-1]]
-                else:
-                    hash_now = 0
-                    hash_1 = 0
-                i = 0
-                hash_60 = 0
-                if AVG_hash_60:
-                    for time_st in list(AVG_hash_60):
-                        if datetime.datetime.now() - time_st > datetime.timedelta(minutes=60):
-                            AVG_hash_60.pop(time_st)
-                        else:
-                            hash_60 += AVG_hash_60[time_st]
-                            i += 1
-                    hash_60 = hash_60/i
-                
-                data = {}
-                data["gpus"] = []
-                gpu_name = ""
-                gpu_vendor = ""
-                fan_speed = 0
-                gpu_temp = 0
-                power_limit = 0
-                for gpu in range(GPUS):
+            i = 0
+            hash_60 = 0
+            if AVG_hash_60:
+                for time_st in list(AVG_hash_60):
+                    if datetime.datetime.now() - time_st > datetime.timedelta(minutes=60):
+                        AVG_hash_60.pop(time_st)
+                    else:
+                        hash_60 += AVG_hash_60[time_st]
+                        i += 1
+                hash_60 = hash_60/i
+            
+            data = {}
+            data["gpus"] = []
+            gpu_name = ""
+            gpu_vendor = ""
+            fan_speed = 0
+            gpu_temp = 0
+            power_limit = 0
+            for gpu in range(GPUS):
+                try:
                     #Возьмем данные с драйвера
                     p = subprocess.Popen(['sudo', '-S', 'nvidia-smi', '-i', str(gpu), '-q', '-x'], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
                     text = p.communicate(CONFIG["SUDO_PASS"] + '\n')[0]
@@ -109,15 +114,13 @@ def get_gpu_info():
                         data["hashrate_minute"] = hash_1
                         data["hashrate_hour"] = hash_60
                     data["gpus"].append({"power":power_limit, "temperature":gpu_temp, "hashrate":hash_now, "hashrate_minute":hash_1, "hashrate_hour":hash_60,  "name": gpu_name, "vendor": gpu_vendor,  "fan_speed":int(fan_speed), "efficiency":round(hash_1/power_limit), "shares":SHARES})
-
-                
-            else: print("WARNING: unknown miner")
-        else:
-            data = {} 
-            print("WARNING: unknown miner")
-    except:
-        print("WARNING: No data from miner")
-        return
+                except:
+                    print("WARNING: No data from Nvidia")
+                    return
+        else: print("WARNING: unknown miner")
+    else:
+        data = {} 
+        print("WARNING: unknown miner")
     #возьмем еще параметры компьютера из psutil
     USED_RAM = psutil.virtual_memory()[2]
     CPU_temp = psutil.sensors_temperatures(fahrenheit=False)["coretemp"][0][1]
@@ -370,6 +373,20 @@ def mqtt_listen(topic, host, username, password):
     try: subscribe.callback(on_message, topic, hostname=host, auth = {'username':username, 'password':password})
     except(TimeoutError, ConnectionRefusedError, paho.mqtt.MQTTException): print("WARNING: Can't connect to MQTT")
 
+def connectToTrex():
+    if "MINER" in CONFIG and CONFIG["MINER"] == "Trex":
+        if "TrexAPIPASS" in CONFIG:
+            if "TrexAPI" in CONFIG: url1 = str(CONFIG["TrexAPI"])
+            else: url1 = "http://127.0.0.1:4067"
+            password = str(CONFIG["TrexAPIPASS"])
+            try: 
+                contents = urllib.request.urlopen(url1+"/login?password="+password).read()
+                data = json.loads(contents)
+                if data["success"] == 1: 
+                    globals()["SID"] = data["sid"]
+                    print("Trex authorization success")
+                else: print("WARNING: Trex authorization error")
+            except: ("WARNING: No data from Trex miner")
 if __name__ == '__main__':
     system = platform.system()
     if system == "Linux": CONFIG_PATCH = get_script_dir()+"/config.yaml"
@@ -383,19 +400,9 @@ if __name__ == '__main__':
         CONFIG = yaml.load(f.read(), Loader=yaml.FullLoader)
     
     MEMBER = {"fan_state":[], "fan_mode":[], "fan_speed":[]} #Запоминаем всякую всячину
+    SID = "" #SID for Trex
     #Trex майнер
-    if "MINER" in CONFIG and CONFIG["MINER"] == "Trex":
-        if "TrexAPIPASS" in CONFIG:
-            if "TrexAPI" in CONFIG: url1 = str(CONFIG["TrexAPI"])
-            else: url1 = "http://127.0.0.1:4067"
-            password = str(CONFIG["TrexAPIPASS"])
-            try: 
-                contents = urllib.request.urlopen(url1+"/login?password="+password).read()
-                data = json.loads(contents)
-                if data["success"] == 1: SID = data["sid"]
-                else: print("WARNING: Trex wrong password")
-            except: ("WARNING: No data from miner")
-            
+    connectToTrex()
     #Данила майнер
     if "MINER" in CONFIG and CONFIG["MINER"] == "danila-miner":
         CONVERT = {"k":1*10**3, "K":1*10**3, "M":1*10**6, "G":1*10**9}
