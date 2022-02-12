@@ -144,10 +144,6 @@ def get_gpu_info():
             except:
                 print("WARNING: No data from Trex miner. Trying to reconnect")
                 connectToTrex()
-<<<<<<< HEAD
-=======
-                return
->>>>>>> 19f47e38526e1741101ab4c12ffddf981f508fa1
         #Для данилы
         elif CONFIG["MINER"] == "danila-miner":
             #обновим средний хэш
@@ -158,17 +154,10 @@ def get_gpu_info():
                     if datetime.datetime.now() - time_st < datetime.timedelta(seconds=60):
                         hash_1 += AVG_hash_now[time_st]
                         i += 1
-<<<<<<< HEAD
                     else:
                         AVG_hash_now.pop(time_st)
                 if i > 0: hash_1 = round(hash_1/i,2)
 
-=======
-                    if datetime.datetime.now() - time_st > datetime.timedelta(seconds=CONFIG["INTERVAL"]):
-                        AVG_hash_now.pop(time_st)
-                hash_1 = hash_1/i
-            if AVG_hash_now: 
->>>>>>> 19f47e38526e1741101ab4c12ffddf981f508fa1
                 hash_now = AVG_hash_now[list(AVG_hash_now)[-1]]
             else:
                 hash_now = 0
@@ -182,17 +171,12 @@ def get_gpu_info():
                     else:
                         hash_60 += AVG_hash_60[time_st]
                         i += 1
-<<<<<<< HEAD
                 if i > 0: hash_60 = round(hash_60/i, 2)
             #обновим средний хэш2
             hash2_now = 0
             hash2_1 = 0
             hash2_60 = 0
 
-=======
-                hash_60 = hash_60/i
-            
->>>>>>> 19f47e38526e1741101ab4c12ffddf981f508fa1
             data = {}
             data["gpus"] = []
             gpu_name = ""
@@ -202,7 +186,6 @@ def get_gpu_info():
             power_limit = 0
             for gpu in range(GPUS):
                 try:
-<<<<<<< HEAD
                     if system == "Linux":
                         #Возьмем данные с драйвера
                         p = subprocess.Popen(['sudo', '-S', 'nvidia-smi', '-i', str(gpu), '-q', '-x'], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
@@ -219,30 +202,12 @@ def get_gpu_info():
                         match_pl = re.findall(r".*<power_limit>(\d+.\d+) W</power_limit>.*", text)
                         if match_pl: power_limit = float(match_pl[0])
                         else: power_limit = 1
-=======
-                    #Возьмем данные с драйвера
-                    p = subprocess.Popen(['sudo', '-S', 'nvidia-smi', '-i', str(gpu), '-q', '-x'], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-                    text = p.communicate(CONFIG["SUDO_PASS"] + '\n')[0]
-                    match_name = re.findall(r".*<product_name>(.+)</product_name>.*", text)
-                    if match_name: gpu_name = match_name[0]
-                    match_vendor = re.findall(r".*<product_brand>(.+)</product_brand>.*", text)
-                    if match_vendor: gpu_vendor = match_vendor[0]
-
-                    match_fan = re.findall(r".*<fan_speed>(\d+) %</fan_speed>.*", text)
-                    if match_fan: fan_speed = float(match_fan[0])
-                    match_temp = re.findall(r".*<gpu_temp>(\d+) C</gpu_temp>.*", text)
-                    if match_temp: gpu_temp = float(match_temp[0])
-                    match_pl = re.findall(r".*<power_limit>(\d+.\d+) W</power_limit>.*", text)
-                    if match_pl: power_limit = float(match_pl[0])
-                    else: power_limit = 1
->>>>>>> 19f47e38526e1741101ab4c12ffddf981f508fa1
                     #создадим словарь как в майнере.
                     if gpu == 0:
                         data["gpu_total"] = GPUS
                         data["hashrate"] = hash_now
                         data["hashrate_minute"] = hash_1
                         data["hashrate_hour"] = hash_60
-<<<<<<< HEAD
                     data["gpus"].append({"power":power_limit, 
                     "temperature":gpu_temp, 
                     "hashrate":hash_now, 
@@ -333,16 +298,6 @@ def get_gpu_info():
         data = {} 
         print("WARNING: unknown miner")
     if not "data" in locals(): data = {} 
-=======
-                    data["gpus"].append({"power":power_limit, "temperature":gpu_temp, "hashrate":hash_now, "hashrate_minute":hash_1, "hashrate_hour":hash_60,  "name": gpu_name, "vendor": gpu_vendor,  "fan_speed":int(fan_speed), "efficiency":round(hash_1/power_limit), "shares":SHARES})
-                except:
-                    print("WARNING: No data from Nvidia")
-                    return
-        else: print("WARNING: unknown miner")
-    else:
-        data = {} 
-        print("WARNING: unknown miner")
->>>>>>> 19f47e38526e1741101ab4c12ffddf981f508fa1
     #возьмем еще параметры компьютера из psutil
     USED_RAM = psutil.virtual_memory()[2]
     CPU_freq = round(psutil.cpu_freq(percpu=False)[0])
@@ -596,7 +551,6 @@ def mqtt_listen(topic, host, username, password):
     try: subscribe.callback(on_message, topic, hostname=host, auth = {'username':username, 'password':password})
     except(TimeoutError, ConnectionRefusedError, paho.mqtt.MQTTException): print("WARNING: Can't connect to MQTT")
 
-<<<<<<< HEAD
 def flask(CONFIG):
     net_info = psutil.net_if_addrs()
     if not "IP_FLASK" in CONFIG["APP"]: 
@@ -731,8 +685,6 @@ def isauth(pc):
             return True
     return False
 
-=======
->>>>>>> 19f47e38526e1741101ab4c12ffddf981f508fa1
 def connectToTrex():
     if "MINER" in CONFIG and CONFIG["MINER"] == "Trex":
         if "TrexAPIPASS" in CONFIG:
