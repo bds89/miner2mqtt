@@ -33,17 +33,25 @@
 - Поддержка APIKEY для  Trex. Не обязательный параметр `TrexAPIPASS` в `config.yaml`
 - Поддержка API адреса для Trex. Не обязательный параметр `TrexAPI` в `config.yaml`
 </details>
+<details>
+  <summary>1.4</summary>
+
+- Поддержка lol-miner
+(необходима переустановка m2m либо ручная установка фреймворка flask(pip install flask))
+</details>
+
 ## Описание
 
 **Поддерживаемые ОС**
 
 - Linux
-- Windows (версия 1.0)
+- Windows (без управления)
 
 **Поддерживаемые майнеры**
 
 - T-Rex
 - danila miner
+- lol miner
 
 **Воможности:**
 - Публикация всей информации от майнера в MQTT
@@ -63,6 +71,12 @@
 - Для изменения power limit требуются права SU, необходимо либо вписать `SUDO_PASS` в `config.yaml` либо запускать `m2m.py` с правами sudo.
 </details>
 
+**Примечания:**
+- danila-miner не предоставляет информации по каждой карте отдельно. В ваш топик будут публиковаться одинаковые суммарные значения хэшрейта для каждой карты
+- danila-miner не предоставляет информации о состоянии видекарты(температура, обороты вентиляторов, мощность), для Linux значения будут браться из nvidia-smi, для Windows эти значения будут пустыми.
+- для получения информации от lol-miner в его скрипте, необходимо включить API (например: --apiport 4067 --apihost 127.0.0.1)
+- для Windows, если используете параметр `lol_command` в скрипте майнера желательно прописать к нему абсолютный путь (например: "C:\Users\bds89\Downloads\lolMiner_v1.44_Win64\1.44\lolMiner.exe") либо располажить майнер на диске С.
+- Фреймворк `flask` пока не используется, и не будет запускаться, пока это не указанно в `config.yaml`, мне лень было удалять из кода все его упоминания, т.к. скоро будет выпущена первая версия андройд приложения и он понадобится.
 
 ## Установка:
 
@@ -91,24 +105,28 @@
   
 ## Редактирование config.yaml:
 ```yaml
-MINER: Trex/danila-miner
-    #выбор GPU майнера (*required)
+MINER: Trex/danila-miner/lol-miner
+    #выбор GPU майнера (*обязательно)
 danila_command: "/home/ferma2/TON_miner/danila-miner run https://server1.whalestonpool.com your_walet_adress"
-    #Команда для запуска danila-miner
+    #Команда для запуска danila-miner(*обязательно, если используется `danila-miner`)
+lol_command: /home/bds89/lolMiner_v1.44_Lin64/1.44/dual_mine_eth_ton.sh
+    #Команда для запуска lol-miner(не обязательно, при запуске майнера скриптом m2m в mqtt будет передаваться дополнитльный параметр `lhrtune`)
 TrexAPI: http://127.0.0.1:4067
-    #выбор адреса API для Trex майнера, если отличается от стандартного
+    #адрес API для Trex майнера, если отличается от стандартного
 TrexAPIPASS: YourWebGuiPassword
     #ваш пароль для Trex майнера
+lolAPI: http://127.0.0.1:4067
+    #адрес API для lol майнера (обязательно если ипользуется `lol-miner`)
 SUDO_PASS: pass
     #пароль суперпользователя, для изменения power_limit
 MQTT:
   TOPIC: miner2mqtt/rig0
   HOST: 192.168.0.120
-  USERNAME: user
-  PASS: pass
+  USERNAME: mqttuser
+  PASS: mqttpass
     #Подключение к вашему MQTT
-INTERVAL: 300
-    #интервал сбора и публикации информации в секундах (*required)
+INTERVAL: 120s
+    #интервал сбора и публикации информации в секундах (*обязательно)
 INCLUDE:
 - active_pool
 - gpus
@@ -117,212 +135,41 @@ EXCLUDE: {}
     #фильтры по ключам из JSON словаря вашего майнера (поддерживаются только ключи первого уровня)
 ```
 ## Примеры публикации в MQTT:
+Публикация в mqtt будет отличаться в зависимости от майнера, вы можете посмотреть ее, подписавшись на свойтопик/# в HomeAssitant, ниже приведен пример публикации в mqtt, не зависящеей от выбранного майнера
 <details>
-  <summary>Trex в miner2mqtt/rig0/#</summary>
+  <summary>Общая публикация</summary>
 
 ```json
 {
-  // Number of accepted shares count
-  "accepted_count": 6,
-  
-  // Information about the pool your miner is currently connected to
-  "active_pool":
-  {
-    // Current pool difficulty
-    "difficulty": 5,
-    
-    // Pool latency
-    "ping": 97,
-    
-    // Number of connection attempts in case of connection loss
-    "retries": 0,
-    
-    // Pool connection string
-    "url": "stratum+tcp://...",
-    
-    // Usually your wallet address
-    "user": "..."
-  },
-  
-  // Algorithm which was set in config
-  "algorithm": "x16r",
-
-  // HTTP API protocol version   
-  "api": "1.2",
-
-  // CUDA toolkit version used to built the miner
-  "cuda": "9.10",
-
-  // Software description
-  "description": "T-Rex NVIDIA GPU miner",
-  
-  // Current network difficulty
-  "difficulty": 31968.245093004043,
-
-  // Total number of GPUs installed in your system
-  "gpu_total": 1,
-  
-  // List of all currently working GPUs in your system with its stats
-  "gpus": [{
-    // Internal device id, useful for devs
-    "device_id": 0,                        
-
-    // Fan blades rotation speed in % of the max speed
-    "fan_speed": 66,                       
-
-    // User defined device id in config
-    "gpu_user_id": 0,                        
-
-    // Average hashrate per N sec defined in config
-    "hashrate": 4529054,                   
-
-    // Average hashrate per day
-    "hashrate_day": 5023728,    
-
-    // Average hashrate per hour
-    "hashrate_hour": 0,          
-
-    // Average hashrate per minute
-    "hashrate_minute": 4671930,    
-
-    // User defined intensity
-    "intensity": 21.5,        
-
-    // Current device name.
-    "name": "GeForce GTX 1050",
-
-    // Current device temperature.
-    "temperature": 80,            
-
-    // Current device vendor.
-    "vendor": "Gigabyte", 
-
-    // Device state. Might appear if device reached heat limit. (set by --temperature-limit)
-    "disabled":true,                       
-
-    // Device temperature at disable. Might appear if device reached heat limit.
-    "disabled_at_temperature": 77,
-    
-    // Shares stat for the device.
-    "shares": {
-        "accepted_count": 3,
-        "invalid_count": 0,
-        "rejected_count": 0,
-        "solved_count": 0
-    }
-  }],
-  
-  // Total average sum of hashrates for all active devices per N sec defined in config.
-  "hashrate": 4529054,                       
-
-  // Total average sum of hashrates for a day.
-  "hashrate_day": 5023728,                   
-
-  // Total average sum of hashrates for an hour.
-  "hashrate_hour": 0,                        
-
-  // Total average sum of hashrates for a minute.
-  "hashrate_minute": 4671930,                
-
-  // Application name
-  "name": "t-rex",
-
-  // Operating system
-  "os": "linux",
-
-  // This is number of rejected shares count.
-  "rejected_count": 0,                       
-
-  // This is number of found blocks.
-  "solved_count": 0,                
-
-  // Current time in sec from the beginning of the epoch. (ref: https://www.epochconverter.com)
-  "ts": 1537095257,                          
-
-  // Uptime in sec. This shows how long the miner has been running for.
-  "uptime": 108,                             
-
-  // Miner version.
-  "version": "0.6.5",
-
-  // Information about available update. Appears in case update is available.
-  "updates":{                                
-
-    // Url of file archive to download.
-    "url": "https://fileurl",          
-
-    // Signature of update pack (md5).
-    "md5sum": "md5...",               
-
-    // T-Rex version in update.
-    "version": "0.8.0",        
-
-    // Short info about changes in update.
-    "notes": "short update info",         
-
-    // Whole info about changes in update.
-    "notes_full": "full update info",     
-
-    // Information about current update download.
-    "download_status":
-    {
-      // Total bytes downloaded.
-      "downloaded_bytes": 1775165,
-
-      // Total bytes to download.
-      "total_bytes": 5245345,
-
-      // Last error if download failed.
-      "last_error":"",
-
-      // Time elapsed since first byte downloaded.
-      "time_elapsed_sec": 2.887111,
-
-      // Download service state.
-      "update_in_progress": true,
-
-      // Download service named state. ("started", "downloading", "finished", "error", "idle")
-      "update_state": "downloading",
-
-      // Url of file in operation.
-      "url": "https://fileurl"
-    },
-  "sys_params": {
-        "used_ram": 77.9,
-        "cpu_temp": 40,
-        "cpu_freq": 3300,
-        "cpu_fan": 986
-  }
-}
-```
-</details>
-
-<details>
-  <summary>Danila-miner в miner2mqtt/rig0/#</summary>
-
-```json
-{
+    "hashrate": 43051985.1,
+    "hashrate2": 904308856.7,
     "gpus": [
         {
-            "hashrate": 1019340000,
-            "hashrate_hour": 1019340000,
-            "hashrate_minute": 1019340000,
-            "name": "NVIDIA GeForce RTX 3060 Ti",
-            "power": 156,
+            "device_id": 0,
             "fan_speed": 40,
-            "temperature": 38,
-            "efficiency": 6534231,
-            "shares": "0"
+            "name": "NVIDIA GeForce RTX 3060 Ti",
+            "temperature": 39,
+            "power": 164.548,
+            "vendor": "",
+            "hashrate": 43050000,
+            "efficiency": 261625.78700439993,
+            "hashrate2": 904310000,
+            "efficiency2": 261625.78700439993,
+            "hashrate_minute": 42707500,
+            "hashrate_minute2": 902945000,
+            "hashrate_hour": 39010434.78,
+            "hashrate_hour2": 720106956.52
         }
     ],
     "sys_params": {
-        "used_ram": 77.1,
-        "cpu_temp": 37,
-        "cpu_freq": 3300,
-        "cpu_fan": 986
+        "used_ram": 10.5,
+        "cpu_temp": 32,
+        "cpu_freq": 1277,
+        "cpu_fan": "no fan"
     }
 }
 ```
+hashrate2 - хэшрейт второго алгоритма при дуал майнинге. Если вы работает с одним алгоритмом, эти значения будут равны 0.
 </details>
 
 ## Примеры интеграции в Home Asistant:

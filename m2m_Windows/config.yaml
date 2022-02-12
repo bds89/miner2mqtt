@@ -1,11 +1,16 @@
-MINER: Trex
+MINER: lol-miner
+lolAPI: http://127.0.0.1:4067
+lol_command: C:\Users\bds89\Downloads\lolMiner_v1.44_Win64\1.44\dual_mine_eth_ton_tonwales.bat
+# danila_command: "/home/bds5/TON_miner/danila-miner run https://server1.whalestonpool.com EQDPy5Z0v_v-rs5s-7YZmhrQpN_qDXsdsdsdsdssdds" 
+# TrexAPI: http://127.0.0.1:4067
+# TrexAPIKEY: "sdsdsd"
+
+SUDO_PASS: "0"
 MQTT:
   TOPIC: miner2mqtt/rig0
   HOST: 192.168.0.120
-  USERNAME: username
-  PASS: pass
-INTERVAL: 300
-INCLUDE:
-- active_pool
-- gpus
+  USERNAME: mqttuser
+  PASS: mqttpass
+INTERVAL: 120
+INCLUDE: {}
 EXCLUDE: {}

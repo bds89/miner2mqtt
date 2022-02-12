@@ -13,6 +13,7 @@ setup(
     install_requires=[
         'PyYAML',
         'psutil',
-        'paho-mqtt'
+        'paho-mqtt',
+        'flask'
 ]
 )
