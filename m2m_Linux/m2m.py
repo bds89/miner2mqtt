@@ -455,8 +455,8 @@ def mqtt_publish(contents, _topic="", retain=False, multiple=False):
     try:
         if multiple: publish.multiple(msgs=contents, retain=retain, hostname=host, auth = {'username':username, 'password':password})
         else: publish.single(topic, contents, retain=retain, hostname=host, auth = {'username':username, 'password':password})
-    except(TimeoutError, ConnectionRefusedError, paho.mqtt.MQTTException): print("WARNING: Can't connect to MQTT")
-        
+    except: print("WARNING: Can't connect to MQTT")
+    #   TimeoutError, ConnectionRefusedError, paho.mqtt.MQTTException
 
 def polls(interval):
     print("M2M started")
@@ -547,9 +547,13 @@ def on_message(client, userdata, message):  #Здесь все команды п
         return
 
 def mqtt_listen(topic, host, username, password):
-    topic = topic+"/to_miner/#"
-    try: subscribe.callback(on_message, topic, hostname=host, auth = {'username':username, 'password':password})
-    except(TimeoutError, ConnectionRefusedError, paho.mqtt.MQTTException): print("WARNING: Can't connect to MQTT")
+    while True:
+        topic = topic+"/to_miner/#"
+        try: subscribe.callback(on_message, topic, hostname=host, auth = {'username':username, 'password':password})
+        except: 
+            print("WARNING: Can't connect to MQTT")
+            time.sleep(CONFIG["INTERVAL"])
+            continue
 
 def flask(CONFIG):
     net_info = psutil.net_if_addrs()
