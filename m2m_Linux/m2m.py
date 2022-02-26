@@ -234,6 +234,7 @@ def get_gpu_info():
                 for i in enumerate(lol_data["Workers"]):
                     data["gpus"].append(dict_rename_keys(lol_data["Workers"][i[0]], lol_adapter_dict))
                 data["uptime"] = lol_data["Session"]["Uptime"]
+                data["gpu_total"] = GPUS
 
 
                 K1 = re.findall("([MKkG])h",lol_data["Algorithms"][0]["Performance_Unit"])
@@ -374,7 +375,8 @@ def gpu_pause(pause, card):
     else: print("WARNING: can't pause this mainer")
     return
 
-def power_limit(pl, card):
+def power_limit(pl, card, m2a=False):
+    card = int(card)
     if not "SUDO_PASS" in CONFIG:
         CONFIG["SUDO_PASS"] = ""
         print("INFO: havn't sudo password")
@@ -382,17 +384,24 @@ def power_limit(pl, card):
         pl = int(pl)
     except(ValueError, TypeError):
         print("WARNING: can't change power limit, bad value")
+        text = "Can't change power limit, bad value"
+        if m2a: return {"code": 100, "text": text}
         return(False)
     if pl <= 0:
         print("INFO: power limit must be positive")
+        text = "Power limit must be positive"
+        if m2a: return {"code": 100, "text": text}
         return(False)
     p = subprocess.Popen(['sudo', '-S', 'nvidia-smi', '-i', str(card), '-pl', str(pl)], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     text = p.communicate(CONFIG["SUDO_PASS"] + '\n')[0]
     if "All done" in text:
         print("INFO: "+text)
+        if m2a: return {"code": 200, "text": text, "data":{}}
         return(True)
     if not text:
         print("WARNING: can't change power limit, no responce from NVIDIA")
+        text = "Can't change power limit, no responce from NVIDIA"
+        if m2a: return {"code": 100, "text": text}
         return(False)
 
 def fan_state(fan, card):
@@ -412,39 +421,106 @@ def fan_state(fan, card):
         print("WARNING: can't change fan on/off")
         return(False)
 
-def fan_mode(fan, card):
+def fan_mode(fan, card, m2a=False):
+    card = int(card)
     if re.search(r"[Aa][Uu][Tt][Oo]", fan):
+        fan = "auto"
         text = os.popen('nvidia-settings -a "[gpu:'+str(card)+']/GPUFanControlstate=0"').read()
     elif re.search(r"[Mm][Aa][Nn][Uu][Aa][Ll]", fan):
+        fan = "manual"
         text = os.popen('nvidia-settings -a "[gpu:'+str(card)+']/GPUFanControlstate=1" -a ["fan:'+str(card*2)+']/GPUTargetFanSpeed='+str(MEMBER["fan_speed"][card])+'" -a ["fan:'+str(card*2+1)+']/GPUTargetFanSpeed='+str(MEMBER["fan_speed"][card])+'"').read()
     else:
         print("WARNING: can't change fan mode, bad value")
+        text = "Can't change fan mode, bad value"
+        if m2a: return {"code": 100, "text": text}
         return(False)
     if "assigned value" in text:
         globals()["MEMBER"]["fan_mode"][card] = fan
-        mqtt_publish(fan, "/from_miner/"+str(card)+"/fan_mode")
+        if "MQTT" in CONFIG: mqtt_publish(fan, "/from_miner/"+str(card)+"/fan_mode")
         print("INFO: "+text)
+        if m2a: return {"code": 200, "text": text, "data":{"fan_mode":fan}}
         return(True)
     else: 
         print("WARNING: can't change fan mode, NVIDIA error")
+        text = "Can't change fan mode, NVIDIA error"
+        if m2a: return {"code": 100, "text": text}
         return(False)
 
-def fan_speed(fan, card):
+
+
+@app.route('/get_fan_mode', methods=['POST'])
+def m2a_get_fan_mode(card=False):  #Получить режим вентилятора
+    if system == "Linux":
+        if request:
+            if request.is_json:
+                request_data = request.get_json()
+                if isauth(request_data):
+                    print("Mobile App: Get fan mode")
+                    if request_data["ex_IP"] == "" or request_data["in_IP"] == "":        
+                        return json.dumps({"code": 200, "text": "", "data":{"fan_mode":MEMBER["fan_mode"][int(request_data["card"])]}})
+                    host = request_data["in_IP"]
+                    port = int(request_data["in_port"])
+                    data = socket_client(host, port, "m2a_get_fan_mode('"+request_data['card']+"')")
+                    return json.dumps(data)
+                answer = {"code": 300, "text": "Authorisation Error"}
+                return json.dumps(answer)
+            return {"code": 100, "text": "Missing JSON in request"}
+        else: 
+            if card != False and len(MEMBER["fan_mode"]) > int(card): return {"code": 200, "text": "", "data":{"fan_mode":MEMBER["fan_mode"][int(card)]}}
+            else: return {"code": 100, "text": "bad value"}
+    else: return {"code": 100, "text": "Not supported OS"}
+
+        
+#Управление из приложения!!!!!!!!!!!!!!!!!!!!!!!!
+@app.route('/control', methods=['POST'])
+def m2a_control():
+    if system == "Linux":
+        if request.is_json:
+            request_data = request.get_json()
+            if isauth(request_data):
+                print("Mobile App: "+request_data["request"])
+                if request_data["ex_IP"] == "" or request_data["in_IP"] == "":
+                    if request_data["request"] == "fan_speed": return json.dumps(fan_speed(request_data["value"], request_data["card"], True))
+                    elif request_data["request"] == "fan_mode": return json.dumps(fan_mode(request_data["value"], request_data["card"], True))
+                    elif request_data["request"] == "power_limit": return json.dumps(power_limit(request_data["value"], request_data["card"], True))
+                    else: return {"code": 100, "text": "Bad request"}
+                    
+                host = request_data["in_IP"]
+                port = int(request_data["in_port"])
+                data = socket_client(host, port, request_data['request']+"('"+request_data['value']+"', '"+request_data['card']+"', True)")
+                return json.dumps(data)
+            answer = {"code": 300, "text": "Authorisation Error"}
+            return json.dumps(answer)
+        return {"code": 100, "text": "Missing JSON in request"}
+    else: return {"code": 100, "text": "Not supported OS"}
+
+
+ 
+def fan_speed(fan, card, m2a=False):
+
     try:
         fan = int(fan)
+        card = int(card)
     except(ValueError, TypeError):
-        print("WARNING: can't fan speed, bad value")
+        print("WARNING: can't change fan speed, bad value")
+        text = "Can't change fan speed, bad value"
+        if m2a: return {"code": 100, "text": text}
         return(False)
     if fan < 0:
         print("INFO: fan speed must be positive")
+        text = "Fan speed must be positive"
+        if m2a: return {"code": 100, "text": text}
         return(False)
     text = os.popen('nvidia-settings -a "[gpu:'+str(card)+']/GPUFanControlstate=1" -a ["fan:'+str(card*2)+']/GPUTargetFanSpeed='+str(fan)+'" -a ["fan:'+str(card*2+1)+']/GPUTargetFanSpeed='+str(fan)+'"').read()
     if "assigned value" in text:
         globals()["MEMBER"]["fan_mode"][card] = "manual"
         print("INFO: "+text)
+        if m2a: return {"code": 200, "text": text, "data":{"fan_mode":"manual"}}
         return(True)
     else:
         print("WARNING: can't change fan speed, NVIDIA error")
+        text = "Can't change fan speed, NVIDIA error"
+        if m2a: return {"code": 100, "text": text}
         return(False)
 
 def mqtt_publish(contents, _topic="", retain=False, multiple=False):
@@ -568,7 +644,9 @@ def flask(CONFIG):
     else: address = str(CONFIG["APP"]["IP_FLASK"])
     if not "PORT_FLASK" in CONFIG["APP"]: port = 5000
     else: port = int(CONFIG["APP"]["PORT_FLASK"])
-    app.run(host=address, port=port)
+    from waitress import serve
+    print("Your IP(Gateway IP): {0}, Port(Gateway Port): {1}".format(address, port))
+    serve(app, host=address, port=port)
 
 def socket_server(CONFIG):
     host = "0.0.0.0"
@@ -743,11 +821,13 @@ if __name__ == '__main__':
     if "MQTT" in CONFIG:
         threading.Thread(target=polls, args=(CONFIG["INTERVAL"],)).start() #запускаем опрос майнера
         threading.Thread(target=mqtt_listen, args=(CONFIG["MQTT"]["TOPIC"],CONFIG["MQTT"]["HOST"],CONFIG["MQTT"]["USERNAME"],CONFIG["MQTT"]["PASS"],)).start() #подписываемся на топик
+    
+    if "APP" in CONFIG and not CONFIG["APP"]: CONFIG["APP"] = {"SLAVE_PC":False}
     if "APP" in CONFIG and "SLAVE_PC" in CONFIG["APP"] and CONFIG["APP"]["SLAVE_PC"]:
         threading.Thread(target=socket_server, args=(CONFIG,)).start() #Server socket for slave pc
     else:
         if "APP" in CONFIG:
-            if "SESSIONKEY" in CONFIG["APP"]: app.secret_key = CONFIG["APP"]["SESSIONKEY"]
+            if "SESSIONKEY" in CONFIG["APP"]: app.secret_key = str(CONFIG["APP"]["SESSIONKEY"])
             else: app.secret_key = b"123456789a"
             threading.Thread(target=flask, args=(CONFIG,)).start() #Flask for miner2android
             if "PASS" in CONFIG["APP"]:

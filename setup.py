@@ -14,6 +14,7 @@ setup(
         'PyYAML',
         'psutil',
         'paho-mqtt',
-        'flask'
+        'flask',
+        'waitress'
 ]
 )
