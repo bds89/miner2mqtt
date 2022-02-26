@@ -1,3 +1,0 @@
-PyYAML
-paho-mqtt
-psutil
