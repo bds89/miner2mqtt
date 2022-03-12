@@ -1,12 +1,12 @@
+from unicodedata import numeric
 import yaml, datetime, time, sys, threading, urllib.request, inspect, os, json, platform, requests, re, subprocess, psutil, socket, pickle, hashlib
 import paho.mqtt.subscribe as subscribe
 import paho.mqtt.publish as publish
-import paho.mqtt
 from flask import Flask, request, session
 
 bool_conv = {"true": "ON", "false": "OFF", "ON":True, "OFF":False, "0":"auto", "1": "manual"}
 app = Flask(__name__)
-
+lock = threading.Lock()
 lol_adapter_dict = {
     "Index":"device_id",
     "Fan_Speed":"fan_speed",
@@ -460,9 +460,11 @@ def m2a_get_fan_mode(card=False):  #Получить режим вентилят
                         return json.dumps({"code": 200, "text": "", "data":{"fan_mode":MEMBER["fan_mode"][int(request_data["card"])]}})
                     host = request_data["in_IP"]
                     port = int(request_data["in_port"])
-                    data = socket_client(host, port, "m2a_get_fan_mode('"+request_data['card']+"')")
+                    params = [request_data["card"]]
+                    data = socket_client(host, port, "m2a_get_fan_mode", params)
                     return json.dumps(data)
                 answer = {"code": 300, "text": "Authorisation Error"}
+                globals()["overload_limits"]["sys_params"][PC_NAME] = "Authorisation Error"
                 return json.dumps(answer)
             return {"code": 100, "text": "Missing JSON in request"}
         else: 
@@ -470,7 +472,7 @@ def m2a_get_fan_mode(card=False):  #Получить режим вентилят
             else: return {"code": 100, "text": "bad value"}
     else: return {"code": 100, "text": "Not supported OS"}
 
-        
+       
 #Управление из приложения!!!!!!!!!!!!!!!!!!!!!!!!
 @app.route('/control', methods=['POST'])
 def m2a_control():
@@ -479,23 +481,48 @@ def m2a_control():
             request_data = request.get_json()
             if isauth(request_data):
                 print("Mobile App: "+request_data["request"])
-                if request_data["ex_IP"] == "" or request_data["in_IP"] == "":
+                if request_data["ex_IP"] == "" or request_data["in_IP"] == "" or request_data["request"] == "check_limits":
                     if request_data["request"] == "fan_speed": return json.dumps(fan_speed(request_data["value"], request_data["card"], True))
                     elif request_data["request"] == "fan_mode": return json.dumps(fan_mode(request_data["value"], request_data["card"], True))
                     elif request_data["request"] == "power_limit": return json.dumps(power_limit(request_data["value"], request_data["card"], True))
+                    elif request_data["request"] == "send_limits": return json.dumps(send_limits(request_data["value"]))
+                    elif request_data["request"] == "check_limits": return json.dumps(check_limits(request_data["name"], request_data["value"]))
                     else: return {"code": 100, "text": "Bad request"}
                     
                 host = request_data["in_IP"]
                 port = int(request_data["in_port"])
-                data = socket_client(host, port, request_data['request']+"('"+request_data['value']+"', '"+request_data['card']+"', True)")
+                if request_data["request"] == "send_limits": params = [request_data["value"]]
+                else: params = [request_data["value"], request_data["card"]]
+                data = socket_client(host, port, request_data['request'], params)
                 return json.dumps(data)
             answer = {"code": 300, "text": "Authorisation Error"}
+            globals()["overload_limits"]["sys_params"][PC_NAME] = "Authorisation Error"
             return json.dumps(answer)
         return {"code": 100, "text": "Missing JSON in request"}
     else: return {"code": 100, "text": "Not supported OS"}
 
+def check_limits(this_pc_name, ips=False):
+    output_text = {"code": 200, "data": {this_pc_name: int(time.time())}}
+    if "overload_limits" in globals() and overload_limits:
+        output_text["data"][this_pc_name] = overload_limits
+    if ips:
+        for name, ip in ips.items():
+            ipport = ip.split(":")
+            data = socket_client(ipport[0], int(ipport[1]), "check_limits", name)
+            if data["code"] == 200 and data["data"]: output_text["data"].update(data["data"])
+            else: output_text["data"].update({name:data})
+    globals()["overload_limits"] = {}
+    return output_text
 
- 
+def send_limits(limits):
+    if "LIMITS" in globals():
+        with lock: globals()["LIMITS"] = limits
+    else: globals()["LIMITS"] = limits
+    with open(LIMITS_PATCH, "wb") as f:
+        pickle.dump(limits, f)
+    globals()["overload_limits"] = {}
+    return {"code": 200, "text": "succes"}
+
 def fan_speed(fan, card, m2a=False):
 
     try:
@@ -534,6 +561,43 @@ def mqtt_publish(contents, _topic="", retain=False, multiple=False):
     except: print("WARNING: Can't connect to MQTT")
     #   TimeoutError, ConnectionRefusedError, paho.mqtt.MQTTException
 
+
+def periodic_check_limits(gpu_info, is_dict=True, item_num="other"):
+    if is_dict:
+        for key, value in gpu_info.items():
+            if type(value) == list: periodic_check_limits(value, False)
+            elif type(value) == dict: periodic_check_limits(value, True, key)
+            else:
+                if type(value) == int or type(value) == float or (type(value) == str and value.isnumeric()):
+                    if float(value) > 1000000: value = float(value)/1000000
+                    else: value = float(value)
+                item_num = str(item_num)
+                #for sys params
+                if item_num == "sys_params" and "99999" in LIMITS and key in LIMITS["99999"]:
+                    if LIMITS["99999"][key][1] == 0:
+                        if value < float(LIMITS["99999"][key][0]): 
+                            if "sys_params" in overload_limits: globals()["overload_limits"]["sys_params"][key] = value
+                            else: globals()["overload_limits"]["sys_params"] = {key:value}
+                    else:
+                        if value > float(LIMITS["99999"][key][0]):
+                            if "sys_params" in overload_limits: globals()["overload_limits"]["sys_params"][key] = value
+                            else: globals()["overload_limits"]["sys_params"] = {key:value}
+                #for gpu and other
+                if item_num in LIMITS and key in LIMITS[item_num]:
+                    if LIMITS[item_num][key][1] == 0:
+                        if value < float(LIMITS[item_num][key][0]):
+                            if "GPU"+item_num in overload_limits: globals()["overload_limits"]["GPU"+item_num][key] = value
+                            else: globals()["overload_limits"]["GPU"+item_num] = {key:value}
+                    else:
+                        if value > float(LIMITS[item_num][key][0]):
+                            if "GPU"+item_num in overload_limits: globals()["overload_limits"]["GPU"+item_num][key] = value
+                            else: globals()["overload_limits"]["GPU"+item_num] = {key:value}
+    else:
+        for item in enumerate(gpu_info):
+            if type(item[1]) == list: periodic_check_limits(item[1], False)
+            elif type(item[1]) == dict: periodic_check_limits(item[1], True, item[0])
+            else: pass
+
 def polls(interval):
     print("M2M started")
     print("Set interval: "+str(datetime.timedelta(seconds=interval)))
@@ -542,8 +606,12 @@ def polls(interval):
             time.sleep(5)
         else:
             gpu_info = get_gpu_info()
-            if "data" in gpu_info:
-                mqtt_publish(json.dumps(gpu_info["data"]))
+            if "MQTT" in CONFIG:
+                if "data" in gpu_info:
+                    mqtt_publish(json.dumps(gpu_info["data"]))
+            #check_limits
+            if "LIMITS" in globals() and "data" in gpu_info: 
+                periodic_check_limits(gpu_info["data"])
             time.sleep(interval)
 
 def on_message(client, userdata, message):  #Здесь все команды получаемые ботом
@@ -678,7 +746,7 @@ def socket_server(CONFIG):
         print ("Connection from: " + str(addr[0]))
         try: data = pickle.loads(conn.recv(2048))
         except: data = "error_data"
-        if ("MAIN_PC" in CONFIG and CONFIG["MAIN_PC"] != addr[0]) or not data:
+        if not data:
             conn.close()
             time.sleep(1)
             continue
@@ -687,14 +755,21 @@ def socket_server(CONFIG):
         if data == "error_data":
             conn.sendall({"code": 100, "text": "slave_pc not recieved request"})
         else:
-            print ("from connected user: " + str(data))
             #Code in slavePC
-            data = eval(data)
+            if data[0] == "fan_speed": data = fan_speed(data[1][0], data[1][1], True)
+            elif data[0] == "fan_mode": data = fan_mode(data[1][0], data[1][1], True)
+            elif data[0] == "power_limit": data = power_limit(data[1][0], data[1][1], True)
+            elif data[0] == "send_limits": data = send_limits(data[1][0])
+            elif data[0] == "m2a_get_fan_mode": data = m2a_get_fan_mode(data[1][0])
+            elif data[0] == "check_limits": data = check_limits(data[1])
+            elif data[0] == "get_gpu_info": data = get_gpu_info()
+            elif data[0] == "m2a_ping": data = m2a_ping()
+            else: data = {"code": 100, "text": "Bad request"}
             data = pickle.dumps(data)
             conn.sendall(data)
     conn.close()
 
-def socket_client(host, port, request):
+def socket_client(host, port, request, params=""):
 
         mySocket = socket.socket()
         mySocket.settimeout(5)
@@ -704,7 +779,8 @@ def socket_client(host, port, request):
         except(ConnectionRefusedError, OSError):
             data = {"code": 100, "text": "Can't connect to "+str(host)+"\n"}
             return data
-        mySocket.send(pickle.dumps(request))
+        for_send = [request, params]
+        mySocket.send(pickle.dumps(for_send))
         data = mySocket.recv(2048)
         while data:
             try: 
@@ -732,9 +808,10 @@ def m2a_refresh():  #Обнолвение из приложения
                 return json.dumps(get_gpu_info())
             host = request_data["in_IP"]
             port = int(request_data["in_port"])
-            data = socket_client(host, port, "get_gpu_info()")
+            data = socket_client(host, port, "get_gpu_info")
             return json.dumps(data)
         answer = {"code": 300, "text": "Authorisation Error"}
+        globals()["overload_limits"]["sys_params"][PC_NAME] = "Authorisation Error"
         return json.dumps(answer)
     return {"code": 100, "text": "Missing JSON in request"}
 
@@ -749,16 +826,18 @@ def m2a_ping():  #Обнолвение из приложения
                 return json.dumps(answer)
             host = request_data["in_IP"]
             port = int(request_data["in_port"])
-            data = socket_client(host, port, "m2a_ping()")
+            data = socket_client(host, port, "m2a_ping")
             return json.dumps(data)
         else:
             print("Mobile App: Authorisation Error")
             answer = {"code": 300, "text": "Authorisation Error"}
+            if "sys_params" in overload_limits: globals()["overload_limits"]["sys_params"][PC_NAME] = "Authorisation Error"
+            else: globals()["overload_limits"].update({"sys_params":{PC_NAME:"Authorisation Error"}})
             return json.dumps(answer)
     return {"code": 200, "text": "ping ok"}
 
 def isauth(pc):
-    print(pc["name"])
+    globals()["PC_NAME"] = pc["name"]
     if "id" in session: return True
     else:
         if CONFIG["APP"]["PASS"] == pc["upass"]:
@@ -783,10 +862,19 @@ def connectToTrex():
             except: ("WARNING: No data from Trex miner")
 if __name__ == '__main__':
     system = platform.system()
-    if system == "Linux": CONFIG_PATCH = get_script_dir()+"/config.yaml"
-    elif system == "Windows": CONFIG_PATCH = get_script_dir()+"\config.yaml"
+    if system == "Linux": 
+        CONFIG_PATCH = get_script_dir()
+        LIMITS_PATCH = CONFIG_PATCH+"/limits.sys"
+        CONFIG_PATCH = CONFIG_PATCH+"/config.yaml"
+    elif system == "Windows": 
+        CONFIG_PATCH = get_script_dir()
+        LIMITS_PATCH = CONFIG_PATCH+"\limits.sys"
+        CONFIG_PATCH = CONFIG_PATCH+"\config.yaml"
     else:
-        try: CONFIG_PATCH = get_script_dir()+"/config.yaml" 
+        try: 
+            CONFIG_PATCH = get_script_dir()
+            LIMITS_PATCH = CONFIG_PATCH+"/limits.sys"
+            CONFIG_PATCH = CONFIG_PATCH+"/config.yaml"
         except:
             print("Not supported os")
             quit()
@@ -819,9 +907,9 @@ if __name__ == '__main__':
         threading.Thread(target=lol_parser, args=(command.split(), "out",)).start() #запускаем LolMiner
 
     if "MQTT" in CONFIG:
-        threading.Thread(target=polls, args=(CONFIG["INTERVAL"],)).start() #запускаем опрос майнера
         threading.Thread(target=mqtt_listen, args=(CONFIG["MQTT"]["TOPIC"],CONFIG["MQTT"]["HOST"],CONFIG["MQTT"]["USERNAME"],CONFIG["MQTT"]["PASS"],)).start() #подписываемся на топик
-    
+    threading.Thread(target=polls, args=(CONFIG["INTERVAL"],)).start() #запускаем опрос майнера
+
     if "APP" in CONFIG and not CONFIG["APP"]: CONFIG["APP"] = {"SLAVE_PC":False}
     if "APP" in CONFIG and "SLAVE_PC" in CONFIG["APP"] and CONFIG["APP"]["SLAVE_PC"]:
         threading.Thread(target=socket_server, args=(CONFIG,)).start() #Server socket for slave pc
@@ -834,4 +922,12 @@ if __name__ == '__main__':
                 hash_object = hashlib.sha1(CONFIG["APP"]["PASS"].encode('utf-8'))
             else: hash_object = hashlib.sha1("".encode('utf-8'))
             CONFIG["APP"]["PASS"] = hash_object.hexdigest()
+    if "APP" in CONFIG:
+        PC_NAME = "Gateway PC"
+        #limits
+        overload_limits = {}
+        if os.path.exists(LIMITS_PATCH):
+            with open(LIMITS_PATCH, "rb") as f:
+                LIMITS = pickle.load(f)
+            
 

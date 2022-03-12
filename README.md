@@ -46,6 +46,11 @@
 - (необходима переустановка m2m либо ручная установка waitress(pip install waitress))
 - (Для включения поддержки мобильного приложения в `config.yaml`необходимо добавить параметр `APP`)
 </details>
+<details>
+  <summary>1.5.1</summary>
+
+- Уведомления для [miner2android](https://github.com/bds89/miner2android). Ваша ферма следит за параметрами компьютера с интервалом `INTERVAL` в `config.yaml`, а затем отдает их приложению.
+</details>
 
 ## Описание
 
