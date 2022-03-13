@@ -141,6 +141,13 @@ def get_gpu_info():
                 contents = urllib.request.urlopen(url).read()
                 globals()["CONTENTS"] = contents
                 data = json.loads(contents)
+                if "dual_stat" in data:
+                    for gpu in enumerate(data["dual_stat"]["gpus"]):
+                        data["gpus"][gpu[0]].update({
+                        "hashrate2":gpu[1]["hashrate"],
+                        "hashrate_minute2":gpu[1]["hashrate_minute"], 
+                        "hashrate_hour2":gpu[1]["hashrate_hour"], 
+                        "hashrate_day2":gpu[1]["hashrate_day"]})
             except:
                 print("WARNING: No data from Trex miner. Trying to reconnect")
                 connectToTrex()
@@ -272,8 +279,9 @@ def get_gpu_info():
                     if i > 0: 
                         hash_1 = round(hash_1/i, 2)
                         hash2_1 = round(hash2_1/i, 2)
-                data["gpus"][num_gpu].update({"hashrate_minute":hash_1})
-                data["gpus"][num_gpu].update({"hashrate_minute2":hash2_1})
+                if len(data["gpus"]) > num_gpu:
+                    data["gpus"][num_gpu].update({"hashrate_minute":hash_1})
+                    data["gpus"][num_gpu].update({"hashrate_minute2":hash2_1})
 
                 i = 0
                 hash_60 = 0
@@ -291,8 +299,9 @@ def get_gpu_info():
                     if i > 0: 
                         hash_60 = round(hash_60/i, 2)
                         hash2_60 = round(hash2_60/i, 2)
-                data["gpus"][num_gpu].update({"hashrate_hour":hash_60})
-                data["gpus"][num_gpu].update({"hashrate_hour2":hash2_60})
+                if len(data["gpus"]) > num_gpu:
+                    data["gpus"][num_gpu].update({"hashrate_hour":hash_60})
+                    data["gpus"][num_gpu].update({"hashrate_hour2":hash2_60})
 
         else: print("WARNING: unknown miner or no API")
     else:
@@ -305,7 +314,9 @@ def get_gpu_info():
     CPU_temp = 0
     CPU_FAN = "no fan"
     if system == "Linux":
-        CPU_temp = psutil.sensors_temperatures(fahrenheit=False)["coretemp"][0][1]
+        try:
+            CPU_temp = psutil.sensors_temperatures(fahrenheit=False)["coretemp"][0][1]
+        except: CPU_temp = 0
         fan_list = psutil.sensors_fans()
         for key, value in fan_list.items():
             for i in value:
