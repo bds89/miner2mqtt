@@ -1,5 +1,5 @@
 from unicodedata import numeric
-import yaml, datetime, time, sys, threading, urllib.request, inspect, os, json, platform, requests, re, subprocess, psutil, socket, pickle, hashlib
+import yaml, datetime, time, sys, threading, urllib.request, inspect, os, json, platform, requests, re, subprocess, psutil, socket, pickle, hashlib, sqlite3
 import paho.mqtt.subscribe as subscribe
 import paho.mqtt.publish as publish
 from flask import Flask, request, session
@@ -483,7 +483,27 @@ def m2a_get_fan_mode(card=False):  #Получить режим вентилят
             else: return {"code": 100, "text": "bad value"}
     else: return {"code": 100, "text": "Not supported OS"}
 
-       
+#Graph
+@app.route('/graph', methods=['POST'])
+def m2a_graph():
+    if request.is_json:
+        request_data = request.get_json()
+        if isauth(request_data):
+            print("Mobile App: "+request_data["request"])
+            if request_data["ex_IP"] == "" or request_data["in_IP"] == "" or request_data["request"] == "check_limits":
+                if request_data["request"] == "graph": return json.dumps(load_from_db(request_data["pname"], request_data["ptype"]))
+                else: return {"code": 100, "text": "Bad request"}
+                
+            host = request_data["in_IP"]
+            port = int(request_data["in_port"])
+            if request_data["request"] == "graph": params = [request_data["pname"], request_data["ptype"]]
+            else: params = ""
+            data = socket_client(host, port, request_data['request'], params)
+            return json.dumps(data)
+        answer = {"code": 300, "text": "Authorisation Error"}
+        globals()["overload_limits"]["sys_params"][PC_NAME] = "Authorisation Error"
+        return json.dumps(answer)
+    return {"code": 100, "text": "Missing JSON in request"}   
 #Управление из приложения!!!!!!!!!!!!!!!!!!!!!!!!
 @app.route('/control', methods=['POST'])
 def m2a_control():
@@ -498,11 +518,13 @@ def m2a_control():
                     elif request_data["request"] == "power_limit": return json.dumps(power_limit(request_data["value"], request_data["card"], True))
                     elif request_data["request"] == "send_limits": return json.dumps(send_limits(request_data["value"]))
                     elif request_data["request"] == "check_limits": return json.dumps(check_limits(request_data["name"], request_data["value"]))
+                    elif request_data["request"] == "graph": return json.dumps(load_from_db(request_data["pname"], request_data["ptype"]))
                     else: return {"code": 100, "text": "Bad request"}
                     
                 host = request_data["in_IP"]
                 port = int(request_data["in_port"])
                 if request_data["request"] == "send_limits": params = [request_data["value"]]
+                elif request_data["request"] == "graph": params = [request_data["pname"], request_data["ptype"]]
                 else: params = [request_data["value"], request_data["card"]]
                 data = socket_client(host, port, request_data['request'], params)
                 return json.dumps(data)
@@ -623,6 +645,9 @@ def polls(interval):
             #check_limits
             if "LIMITS" in globals() and "data" in gpu_info: 
                 periodic_check_limits(gpu_info["data"])
+            #BD
+            if "APP" in CONFIG:
+                save_to_db(gpu_info["data"])
             time.sleep(interval)
 
 def on_message(client, userdata, message):  #Здесь все команды получаемые ботом
@@ -775,6 +800,7 @@ def socket_server(CONFIG):
             elif data[0] == "check_limits": data = check_limits(data[1])
             elif data[0] == "get_gpu_info": data = get_gpu_info()
             elif data[0] == "m2a_ping": data = m2a_ping()
+            elif data[0] == "graph": data = load_from_db(data[1][0], data[1][1])
             else: data = {"code": 100, "text": "Bad request"}
             data = pickle.dumps(data)
             conn.sendall(data)
@@ -871,11 +897,62 @@ def connectToTrex():
                     print("Trex authorization success")
                 else: print("WARNING: Trex authorization error")
             except: ("WARNING: No data from Trex miner")
+
+def load_from_db(pname, ptype):
+    sqlite_connection = sqlite3.connect(DB_PATCH)
+    cursor = sqlite_connection.cursor()
+    try:
+        cursor.execute("SELECT date, value FROM all_params WHERE ptype = '"+ptype+"' AND pname = '"+pname+"' ORDER BY date ASC")
+        data = cursor.fetchall()
+        sqlite_connection.close()
+        return {"code": 200, "data": data}
+    except Exception as e:
+        print(e)
+        return {"code": 100, "text": "Error load from DB"}
+
+
+def save_to_db(gpu_info):
+    sqlite_connection = sqlite3.connect(DB_PATCH)
+    cursor = sqlite_connection.cursor()
+    now_datetime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    for key, value in gpu_info.items():
+        if key == "gpus":
+            for gpu in enumerate(value):
+                for pname, val in gpu[1].items():
+                    one_string = (now_datetime, "GPU"+str(gpu[0]), pname, val)
+                    try: cursor.execute('''INSERT INTO all_params VALUES(?,?,?,?)''', one_string)
+                    except Exception as e: 
+                        print(e)
+                        break
+        elif key == "sys_params":
+            for pname, val in value.items():
+                one_string = (now_datetime, "sys_params", pname, val)
+                try: cursor.execute('''INSERT INTO all_params VALUES(?,?,?,?)''', one_string)
+                except Exception as e: 
+                    print(e)
+                    break
+        elif type(key) != list and type(key) != dict:
+            one_string = (now_datetime, "main", key, value)
+            try: cursor.execute('''INSERT INTO all_params VALUES(?,?,?,?)''', one_string)
+            except Exception as e: 
+                print(e)
+                break
+        else: continue
+
+    try:
+        cursor.execute("DELETE FROM all_params WHERE date < DATE('"+datetime.datetime.now().strftime('%Y-%m-%d')+"','-1 day')")
+    except Exception as e: 
+        print(e)
+    sqlite_connection.commit()
+    sqlite_connection.close()
+
+
 if __name__ == '__main__':
     system = platform.system()
     if system == "Linux": 
         CONFIG_PATCH = get_script_dir()
         LIMITS_PATCH = CONFIG_PATCH+"/limits.sys"
+        DB_PATCH = CONFIG_PATCH+"/values.db"
         CONFIG_PATCH = CONFIG_PATCH+"/config.yaml"
     elif system == "Windows": 
         CONFIG_PATCH = get_script_dir()
@@ -940,5 +1017,17 @@ if __name__ == '__main__':
         if os.path.exists(LIMITS_PATCH):
             with open(LIMITS_PATCH, "rb") as f:
                 LIMITS = pickle.load(f)
+        #create DB
+    #DB CONNECT
+    sqlite_connection = sqlite3.connect(DB_PATCH)
+    cursor = sqlite_connection.cursor()
+    try:
+        cursor.execute("""CREATE TABLE if not exists all_params
+                        (date timestamp, ptype text, pname text, value text)
+                    """)
+        sqlite_connection.commit()
+    except Exception as e:
+        print(e)
+    sqlite_connection.close()
             
 

@@ -49,7 +49,12 @@
 <details>
   <summary>1.5.1</summary>
 
-- Уведомления для [miner2android](https://github.com/bds89/miner2android). Ваша ферма следит за параметрами компьютера с интервалом `INTERVAL` в `config.yaml`, а затем отдает их приложению.
+- Уведомления для [miner2android](https://github.com/bds89/miner2android). Ваша ферма следит за параметрами компьютера с интервалом `INTERVAL` в `config.yaml`, а затем отдает их приложению. (нет необходимости обновлять, если вы не используете [miner2android](https://github.com/bds89/miner2android))
+</details>
+<details>
+  <summary>1.5.2</summary>
+
+- Графики изменения величин для [miner2android](https://github.com/bds89/miner2android). Если в `config.yaml` включен параметр `APP` будет создана база данных `values.db` хранящая значения всех величин с начала предыдущих суток с интервалом `INTERVAL`. (нет необходимости обновлять, если вы не используете [miner2android](https://github.com/bds89/miner2android))
 </details>
 
 ## Описание
