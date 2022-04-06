@@ -950,10 +950,12 @@ def save_to_db(gpu_info):
         if key == "gpus":
             for gpu in enumerate(value):
                 for pname, val in gpu[1].items():
+                    if type(val) == list or type(val) == dict:continue
                     one_string = (now_datetime, "GPU"+str(gpu[0]), pname, val)
                     try: cursor.execute('''INSERT INTO all_params VALUES(?,?,?,?)''', one_string)
                     except Exception as e: 
                         print(e)
+                        print(val)
                         break
         elif key == "sys_params":
             for pname, val in value.items():
@@ -961,13 +963,15 @@ def save_to_db(gpu_info):
                 try: cursor.execute('''INSERT INTO all_params VALUES(?,?,?,?)''', one_string)
                 except Exception as e: 
                     print(e)
-                    break
-        elif type(key) != list and type(key) != dict:
+                    print(val)
+                    continue
+        elif type(key) != list and type(key) != dict and type(value) != list and type(value) != dict:
             one_string = (now_datetime, "main", key, value)
             try: cursor.execute('''INSERT INTO all_params VALUES(?,?,?,?)''', one_string)
             except Exception as e: 
                 print(e)
-                break
+                print(value)
+                continue
         else: continue
 
     try:
