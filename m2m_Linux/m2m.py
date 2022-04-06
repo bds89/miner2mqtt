@@ -95,6 +95,8 @@ def lol_parser(command, std_type):
                             
                         except:
                             print("WARNING: No data from lol-miner API")
+                            if "sys_params" in overload_limits: globals()["overload_limits"]["sys_params"][PC_NAME] = "No data from lol-miner"
+                            else: globals()["overload_limits"].update({"sys_params":{PC_NAME:"No data from lol-miner"}})
     elif "lolAPI" in CONFIG:
         url = str(CONFIG["lolAPI"])
         while True:
@@ -120,6 +122,8 @@ def lol_parser(command, std_type):
                         globals()["AVG_hash2_60"][i].update({time_timestam:data["Algorithms"][1]["Worker_Performance"][i]*CONVERT[K2]})
             except:
                 print("WARNING: No data from lol-miner API")
+                if "sys_params" in overload_limits: globals()["overload_limits"]["sys_params"][PC_NAME] = "No data from lol-miner"
+                else: globals()["overload_limits"].update({"sys_params":{PC_NAME:"No data from lol-miner"}})
             time.sleep(18)
     else: print("WARNING: Can't work without lol-command or lolAPI")
 
@@ -260,7 +264,10 @@ def get_gpu_info():
                 data["hashrate"] = lol_data["Algorithms"][0]["Total_Performance"]*CONVERT[K1]
                 if len(lol_data["Algorithms"]) > 1:
                     data["hashrate2"] = lol_data["Algorithms"][1]["Total_Performance"]*CONVERT[K2]
-            except: print("WARNING: No data from lol-miner API")
+            except: 
+                print("WARNING: No data from lol-miner API")
+                if "sys_params" in overload_limits: globals()["overload_limits"]["sys_params"][PC_NAME] = "No data from lol-miner"
+                else: globals()["overload_limits"].update({"sys_params":{PC_NAME:"No data from lol-miner"}})
             #обновим средний хэш
             i = 0
             for num_gpu in range(GPUS):
@@ -270,7 +277,7 @@ def get_gpu_info():
                     for time_st in list(AVG_hash_now[num_gpu]):
                         if datetime.datetime.now() - time_st < datetime.timedelta(seconds=60):
                             hash_1 += AVG_hash_now[num_gpu][time_st]
-                            if AVG_hash2_now:
+                            if AVG_hash2_now and time_st in AVG_hash2_now[num_gpu]:
                                 hash2_1 += AVG_hash2_now[num_gpu][time_st]
                             i += 1
                         else:
@@ -290,7 +297,7 @@ def get_gpu_info():
                     for time_st in list(AVG_hash_60[num_gpu]):
                         if datetime.datetime.now() - time_st < datetime.timedelta(minutes=60):
                             hash_60 += AVG_hash_60[num_gpu][time_st]
-                            if AVG_hash2_60:
+                            if AVG_hash2_60 and time_st in AVG_hash2_60[num_gpu]:
                                 hash2_60 += AVG_hash2_60[num_gpu][time_st]
                             i += 1
                         else:
@@ -371,6 +378,8 @@ def get_gpu_info():
                 answ.pop(key)
     else: answ = data
     data_answ = {"code": 200, "text": "success", "data": answ}
+    #add limits
+    if "LIMITS" in globals(): data_answ["limits"] = LIMITS
     return(data_answ)
 
 def gpu_pause(pause, card):
@@ -475,7 +484,8 @@ def m2a_get_fan_mode(card=False):  #Получить режим вентилят
                     data = socket_client(host, port, "m2a_get_fan_mode", params)
                     return json.dumps(data)
                 answer = {"code": 300, "text": "Authorisation Error"}
-                globals()["overload_limits"]["sys_params"][PC_NAME] = "Authorisation Error"
+                if "sys_params" in overload_limits: globals()["overload_limits"]["sys_params"][PC_NAME] = "Authorisation Error"
+                else: globals()["overload_limits"].update({"sys_params":{PC_NAME:"Authorisation Error"}})
                 return json.dumps(answer)
             return {"code": 100, "text": "Missing JSON in request"}
         else: 
@@ -501,7 +511,8 @@ def m2a_graph():
             data = socket_client(host, port, request_data['request'], params)
             return json.dumps(data)
         answer = {"code": 300, "text": "Authorisation Error"}
-        globals()["overload_limits"]["sys_params"][PC_NAME] = "Authorisation Error"
+        if "sys_params" in overload_limits: globals()["overload_limits"]["sys_params"][PC_NAME] = "Authorisation Error"
+        else: globals()["overload_limits"].update({"sys_params":{PC_NAME:"Authorisation Error"}})
         return json.dumps(answer)
     return {"code": 100, "text": "Missing JSON in request"}   
 #Управление из приложения!!!!!!!!!!!!!!!!!!!!!!!!
@@ -517,7 +528,9 @@ def m2a_control():
                     elif request_data["request"] == "fan_mode": return json.dumps(fan_mode(request_data["value"], request_data["card"], True))
                     elif request_data["request"] == "power_limit": return json.dumps(power_limit(request_data["value"], request_data["card"], True))
                     elif request_data["request"] == "send_limits": return json.dumps(send_limits(request_data["value"]))
-                    elif request_data["request"] == "check_limits": return json.dumps(check_limits(request_data["name"], request_data["value"]))
+                    elif request_data["request"] == "check_limits":
+                        if not "full_check" in request_data: request_data["full_check"] = False
+                        return json.dumps(check_limits(request_data["name"], request_data["value"], request_data["full_check"]))
                     elif request_data["request"] == "graph": return json.dumps(load_from_db(request_data["pname"], request_data["ptype"]))
                     else: return {"code": 100, "text": "Bad request"}
                     
@@ -529,28 +542,42 @@ def m2a_control():
                 data = socket_client(host, port, request_data['request'], params)
                 return json.dumps(data)
             answer = {"code": 300, "text": "Authorisation Error"}
-            globals()["overload_limits"]["sys_params"][PC_NAME] = "Authorisation Error"
+            if "sys_params" in overload_limits: globals()["overload_limits"]["sys_params"][PC_NAME] = "Authorisation Error"
+            else: globals()["overload_limits"].update({"sys_params":{PC_NAME:"Authorisation Error"}})
             return json.dumps(answer)
         return {"code": 100, "text": "Missing JSON in request"}
     else: return {"code": 100, "text": "Not supported OS"}
 
-def check_limits(this_pc_name, ips=False):
+def check_limits(this_pc_name, ips=False, full_check=False):
     output_text = {"code": 200, "data": {this_pc_name: int(time.time())}}
+    if full_check:
+        gpu_info = get_gpu_info()
+        if "LIMITS" in globals() and "data" in gpu_info: 
+            periodic_check_limits(gpu_info["data"])
     if "overload_limits" in globals() and overload_limits:
         output_text["data"][this_pc_name] = overload_limits
     if ips:
         for name, ip in ips.items():
             ipport = ip.split(":")
-            data = socket_client(ipport[0], int(ipport[1]), "check_limits", name)
+            params = [name, full_check]
+            data = socket_client(ipport[0], int(ipport[1]), "check_limits", params)
             if data["code"] == 200 and data["data"]: output_text["data"].update(data["data"])
             else: output_text["data"].update({name:data})
     globals()["overload_limits"] = {}
+    print(output_text)
     return output_text
 
 def send_limits(limits):
-    if "LIMITS" in globals():
-        with lock: globals()["LIMITS"] = limits
+    if "LIMITS" in globals() and limits:
+        with lock:
+            for key1, one_type in limits.items():
+                for key2, lim in one_type.items():
+                    if key1 in LIMITS:
+                        if key2 in LIMITS[key1] and len(LIMITS[key1][key2])>2 and LIMITS[key1][key2][2] > lim[2]: continue
+                        else: globals()["LIMITS"][key1][key2] = lim
+                    else: globals()["LIMITS"][key1] = {key2:lim}
     else: globals()["LIMITS"] = limits
+    print(LIMITS)
     with open(LIMITS_PATCH, "wb") as f:
         pickle.dump(limits, f)
     globals()["overload_limits"] = {}
@@ -607,22 +634,22 @@ def periodic_check_limits(gpu_info, is_dict=True, item_num="other"):
                 item_num = str(item_num)
                 #for sys params
                 if item_num == "sys_params" and "99999" in LIMITS and key in LIMITS["99999"]:
-                    if LIMITS["99999"][key][1] == 0:
-                        if value < float(LIMITS["99999"][key][0]): 
+                    if LIMITS["99999"][key][1]:
+                        if value > float(LIMITS["99999"][key][0]): 
                             if "sys_params" in overload_limits: globals()["overload_limits"]["sys_params"][key] = value
                             else: globals()["overload_limits"]["sys_params"] = {key:value}
                     else:
-                        if value > float(LIMITS["99999"][key][0]):
+                        if value < float(LIMITS["99999"][key][0]):
                             if "sys_params" in overload_limits: globals()["overload_limits"]["sys_params"][key] = value
                             else: globals()["overload_limits"]["sys_params"] = {key:value}
                 #for gpu and other
                 if item_num in LIMITS and key in LIMITS[item_num]:
-                    if LIMITS[item_num][key][1] == 0:
-                        if value < float(LIMITS[item_num][key][0]):
+                    if LIMITS[item_num][key][1]:
+                        if value > float(LIMITS[item_num][key][0]):
                             if "GPU"+item_num in overload_limits: globals()["overload_limits"]["GPU"+item_num][key] = value
                             else: globals()["overload_limits"]["GPU"+item_num] = {key:value}
                     else:
-                        if value > float(LIMITS[item_num][key][0]):
+                        if value < float(LIMITS[item_num][key][0]):
                             if "GPU"+item_num in overload_limits: globals()["overload_limits"]["GPU"+item_num][key] = value
                             else: globals()["overload_limits"]["GPU"+item_num] = {key:value}
     else:
@@ -797,7 +824,7 @@ def socket_server(CONFIG):
             elif data[0] == "power_limit": data = power_limit(data[1][0], data[1][1], True)
             elif data[0] == "send_limits": data = send_limits(data[1][0])
             elif data[0] == "m2a_get_fan_mode": data = m2a_get_fan_mode(data[1][0])
-            elif data[0] == "check_limits": data = check_limits(data[1])
+            elif data[0] == "check_limits": data = check_limits(data[1][0], False, data[1][1])
             elif data[0] == "get_gpu_info": data = get_gpu_info()
             elif data[0] == "m2a_ping": data = m2a_ping()
             elif data[0] == "graph": data = load_from_db(data[1][0], data[1][1])
@@ -848,7 +875,8 @@ def m2a_refresh():  #Обнолвение из приложения
             data = socket_client(host, port, "get_gpu_info")
             return json.dumps(data)
         answer = {"code": 300, "text": "Authorisation Error"}
-        globals()["overload_limits"]["sys_params"][PC_NAME] = "Authorisation Error"
+        if "sys_params" in overload_limits: globals()["overload_limits"]["sys_params"][PC_NAME] = "Authorisation Error"
+        else: globals()["overload_limits"].update({"sys_params":{PC_NAME:"Authorisation Error"}})
         return json.dumps(answer)
     return {"code": 100, "text": "Missing JSON in request"}
 
@@ -896,7 +924,10 @@ def connectToTrex():
                     globals()["SID"] = data["sid"]
                     print("Trex authorization success")
                 else: print("WARNING: Trex authorization error")
-            except: ("WARNING: No data from Trex miner")
+            except: 
+                print("WARNING: No data from Trex miner")
+                if "sys_params" in overload_limits: globals()["overload_limits"]["sys_params"][PC_NAME] = "No data from Trex miner"
+                else: globals()["overload_limits"].update({"sys_params":{PC_NAME:"No data from Trex miner"}})
 
 def load_from_db(pname, ptype):
     sqlite_connection = sqlite3.connect(DB_PATCH)

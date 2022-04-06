@@ -45,7 +45,7 @@
 - Поддержка [miner2android](https://github.com/bds89/miner2android)
 - (необходима переустановка m2m либо ручная установка waitress(pip install waitress))
 - (Для включения поддержки мобильного приложения в `config.yaml`необходимо добавить параметр `APP`)
-</details>
+
 <details>
   <summary>1.5.1</summary>
 
@@ -56,6 +56,13 @@
 
 - Графики изменения величин для [miner2android](https://github.com/bds89/miner2android). Если в `config.yaml` включен параметр `APP` будет создана база данных `values.db` хранящая значения всех величин с начала предыдущих суток с интервалом `INTERVAL`. (нет необходимости обновлять, если вы не используете [miner2android](https://github.com/bds89/miner2android))
 </details>
+<details>
+  <summary>1.5.3</summary>
+
+- Исправление ошибок для [miner2android](https://github.com/bds89/miner2android) и `lol-miner`
+</details>
+</details>
+
 
 ## Описание
 
