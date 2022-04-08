@@ -25,7 +25,15 @@ def get_script_dir(follow_symlinks=True):
     return os.path.dirname(path)
 
 def run(command, std_type):
-    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False, encoding="utf-8", bufsize=1, universal_newlines=True)
+    if ("SUDO_PASS" in CONFIG):
+        p = subprocess.Popen(['sudo', '-S', 'pwd'], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        p.communicate(CONFIG["SUDO_PASS"] + '\n')
+        process = subprocess.Popen(["sudo", "-S"]+command, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, shell=False, encoding="utf-8", bufsize=1, universal_newlines=True)
+        print("start with SUDO")
+    else: 
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, shell=False, encoding="utf-8", bufsize=1, universal_newlines=True)
+        print("start without SUDO")
+        
     while True:
         try:
             if std_type == "err": line = process.stderr.readline().rstrip()
@@ -56,16 +64,24 @@ def lol_parser(command, std_type):
     name_hash = ""
     if command:
         lhrtune_str = 0
+        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
         for log in run(command, std_type):
             print(">: "+log)
             if "lolAPI" in CONFIG:
                 if log.find("--lhrtune") != -1: lhrtune_str = log.find("--lhrtune")
+                if log.find("LHR") != -1: lhrtune_str = log.find("LHR")
+                GPU_num = re.findall(r"GPU (.+):.need.to", log)
+                if GPU_num:
+                    GPU_num = int(ansi_escape.sub('', GPU_num[0]))
+                    if GPU_num in lock_nums.keys(): globals()["lock_nums"][GPU_num] +=1
+                    else: globals()["lock_nums"][GPU_num] = 1
+                    print("LHR LOCK!")
+
                 if lhrtune_str != 0:
                     matches_gpu = re.findall(r"GPU (\d+) .+", log)
-                    matches_lhr = re.findall(r"(\d+\.\d+)", log[lhrtune_str:])
+                    matches_lhr = re.findall(r"(\d+\.\d+)", log[lhrtune_str-1:])
                     if matches_gpu and matches_lhr:
                         print(matches_lhr)
-                        if len(LHRtune) < int(matches_gpu[0])+1: globals()["LHRtune"].append("")
                         globals()["LHRtune"][int(matches_gpu[0])] = matches_lhr[0]
                 matches = re.findall(r"(.+): Average speed .+: (\d+.\d+)", log)
                 if matches:
@@ -259,7 +275,10 @@ def get_gpu_info():
                         data["gpus"][i[0]].update({"hashrate2":lol_data["Algorithms"][1]["Worker_Performance"][i[0]]*CONVERT[K2]})
                         data["gpus"][i[0]].update({"efficiency2":i[1]*CONVERT[K2]/data["gpus"][i[0]]["power"]})
                     if LHRtune:
-                        data["gpus"][i[0]].update({"lhrtune":LHRtune[i[0]]})
+                        data["gpus"][i[0]].update({"LHR":LHRtune[i[0]]})
+                    if i[0] in lock_nums:
+                        data["gpus"][i[0]].update({"re-calibrate":lock_nums[i[0]]})
+
 
                 data["hashrate"] = lol_data["Algorithms"][0]["Total_Performance"]*CONVERT[K1]
                 if len(lol_data["Algorithms"]) > 1:
@@ -1006,6 +1025,8 @@ if __name__ == '__main__':
     
     MEMBER = {"fan_state":[], "fan_mode":[], "fan_speed":[]} #Запоминаем всякую всячину
     SID = "" #SID for Trex
+    #limits
+    overload_limits = {}
     #Trex майнер
     connectToTrex()
     #Данила майнер
@@ -1023,7 +1044,8 @@ if __name__ == '__main__':
         AVG_hash_60 = []
         AVG_hash2_now = []
         AVG_hash2_60 = []
-        LHRtune = []
+        LHRtune = {}
+        lock_nums = {}
         GPUS = 0
         if "lol_command" in CONFIG: command = CONFIG["lol_command"]
         else: command = ""
@@ -1047,8 +1069,6 @@ if __name__ == '__main__':
             CONFIG["APP"]["PASS"] = hash_object.hexdigest()
     if "APP" in CONFIG:
         PC_NAME = "Gateway PC"
-        #limits
-        overload_limits = {}
         if os.path.exists(LIMITS_PATCH):
             with open(LIMITS_PATCH, "rb") as f:
                 LIMITS = pickle.load(f)
