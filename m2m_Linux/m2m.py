@@ -1,3 +1,6 @@
+# from asyncio import threads
+# from concurrent.futures import thread
+from curses import savetty
 from unicodedata import numeric
 import yaml, datetime, time, sys, threading, urllib.request, inspect, os, json, platform, requests, re, subprocess, psutil, socket, pickle, hashlib, sqlite3
 import paho.mqtt.subscribe as subscribe
@@ -25,7 +28,15 @@ def get_script_dir(follow_symlinks=True):
     return os.path.dirname(path)
 
 def run(command, std_type):
-    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False, encoding="utf-8", bufsize=1, universal_newlines=True)
+    if ("SUDO_PASS" in CONFIG):
+        p = subprocess.Popen(['sudo', '-S', 'pwd'], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        p.communicate(CONFIG["SUDO_PASS"] + '\n')
+        process = subprocess.Popen(["sudo", "-S"]+command, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, shell=False, encoding="utf-8", bufsize=1, universal_newlines=True)
+        print("start with SUDO")
+    else: 
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, shell=False, encoding="utf-8", bufsize=1, universal_newlines=True)
+        print("start without SUDO")
+        
     while True:
         try:
             if std_type == "err": line = process.stderr.readline().rstrip()
@@ -56,16 +67,24 @@ def lol_parser(command, std_type):
     name_hash = ""
     if command:
         lhrtune_str = 0
+        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
         for log in run(command, std_type):
             print(">: "+log)
             if "lolAPI" in CONFIG:
                 if log.find("--lhrtune") != -1: lhrtune_str = log.find("--lhrtune")
+                if log.find("LHR") != -1: lhrtune_str = log.find("LHR")
+                GPU_num = re.findall(r"GPU (.+):.need.to", log)
+                if GPU_num:
+                    GPU_num = int(ansi_escape.sub('', GPU_num[0]))
+                    if GPU_num in lock_nums.keys(): globals()["lock_nums"][GPU_num] +=1
+                    else: globals()["lock_nums"][GPU_num] = 1
+                    print("LHR LOCK!")
+
                 if lhrtune_str != 0:
                     matches_gpu = re.findall(r"GPU (\d+) .+", log)
-                    matches_lhr = re.findall(r"(\d+\.\d+)", log[lhrtune_str:])
+                    matches_lhr = re.findall(r"(\d+\.\d+)", log[lhrtune_str-1:])
                     if matches_gpu and matches_lhr:
                         print(matches_lhr)
-                        if len(LHRtune) < int(matches_gpu[0])+1: globals()["LHRtune"].append("")
                         globals()["LHRtune"][int(matches_gpu[0])] = matches_lhr[0]
                 matches = re.findall(r"(.+): Average speed .+: (\d+.\d+)", log)
                 if matches:
@@ -259,7 +278,10 @@ def get_gpu_info():
                         data["gpus"][i[0]].update({"hashrate2":lol_data["Algorithms"][1]["Worker_Performance"][i[0]]*CONVERT[K2]})
                         data["gpus"][i[0]].update({"efficiency2":i[1]*CONVERT[K2]/data["gpus"][i[0]]["power"]})
                     if LHRtune:
-                        data["gpus"][i[0]].update({"lhrtune":LHRtune[i[0]]})
+                        data["gpus"][i[0]].update({"LHR":LHRtune[i[0]]})
+                    if i[0] in lock_nums:
+                        data["gpus"][i[0]].update({"re-calibrate":lock_nums[i[0]]})
+
 
                 data["hashrate"] = lol_data["Algorithms"][0]["Total_Performance"]*CONVERT[K1]
                 if len(lol_data["Algorithms"]) > 1:
@@ -415,6 +437,7 @@ def power_limit(pl, card, m2a=False):
     p = subprocess.Popen(['sudo', '-S', 'nvidia-smi', '-i', str(card), '-pl', str(pl)], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     text = p.communicate(CONFIG["SUDO_PASS"] + '\n')[0]
     if "All done" in text:
+        text += "\n" + save_to_db_start_params(ptype=card, pname="power_limit", val=pl)
         print("INFO: "+text)
         if m2a: return {"code": 200, "text": text, "data":{}}
         return(True)
@@ -457,6 +480,7 @@ def fan_mode(fan, card, m2a=False):
     if "assigned value" in text:
         globals()["MEMBER"]["fan_mode"][card] = fan
         if "MQTT" in CONFIG: mqtt_publish(fan, "/from_miner/"+str(card)+"/fan_mode")
+        text += "\n" + save_to_db_start_params(ptype=card, pname="fan_mode", val=fan)
         print("INFO: "+text)
         if m2a: return {"code": 200, "text": text, "data":{"fan_mode":fan}}
         return(True)
@@ -466,6 +490,33 @@ def fan_mode(fan, card, m2a=False):
         if m2a: return {"code": 100, "text": text}
         return(False)
 
+def fan_speed(fan, card, m2a=False):
+    try:
+        fan = int(fan)
+        card = int(card)
+    except(ValueError, TypeError):
+        print("WARNING: can't change fan speed, bad value")
+        text = "Can't change fan speed, bad value"
+        if m2a: return {"code": 100, "text": text}
+        return(False)
+    if fan < 0:
+        print("INFO: fan speed must be positive")
+        text = "Fan speed must be positive"
+        if m2a: return {"code": 100, "text": text}
+        return(False)
+    text = os.popen('nvidia-settings -a "[gpu:'+str(card)+']/GPUFanControlstate=1" -a ["fan:'+str(card*2)+']/GPUTargetFanSpeed='+str(fan)+'" -a ["fan:'+str(card*2+1)+']/GPUTargetFanSpeed='+str(fan)+'"').read()
+    if "assigned value" in text:
+        globals()["MEMBER"]["fan_mode"][card] = "manual"
+        text += "\n" + save_to_db_start_params(ptype=card, pname="fan_speed", val=fan)
+        text += "\n" + save_to_db_start_params(ptype=card, pname="fan_mode", val="manual")
+        print("INFO: "+text)
+        if m2a: return {"code": 200, "text": text, "data":{"fan_mode":"manual"}}
+        return(True)
+    else:
+        print("WARNING: can't change fan speed, NVIDIA error")
+        text = "Can't change fan speed, NVIDIA error"
+        if m2a: return {"code": 100, "text": text}
+        return(False)
 
 
 @app.route('/get_fan_mode', methods=['POST'])
@@ -501,7 +552,7 @@ def m2a_graph():
         if isauth(request_data):
             print("Mobile App: "+request_data["request"])
             if request_data["ex_IP"] == "" or request_data["in_IP"] == "" or request_data["request"] == "check_limits":
-                if request_data["request"] == "graph": return json.dumps(load_from_db(request_data["pname"], request_data["ptype"]))
+                if request_data["request"] == "graph": return json.dumps(load_from_db_gpu_info(request_data["pname"], request_data["ptype"]))
                 else: return {"code": 100, "text": "Bad request"}
                 
             host = request_data["in_IP"]
@@ -531,7 +582,7 @@ def m2a_control():
                     elif request_data["request"] == "check_limits":
                         if not "full_check" in request_data: request_data["full_check"] = False
                         return json.dumps(check_limits(request_data["name"], request_data["value"], request_data["full_check"]))
-                    elif request_data["request"] == "graph": return json.dumps(load_from_db(request_data["pname"], request_data["ptype"]))
+                    elif request_data["request"] == "graph": return json.dumps(load_from_db_gpu_info(request_data["pname"], request_data["ptype"]))
                     else: return {"code": 100, "text": "Bad request"}
                     
                 host = request_data["in_IP"]
@@ -582,33 +633,6 @@ def send_limits(limits):
         pickle.dump(limits, f)
     globals()["overload_limits"] = {}
     return {"code": 200, "text": "succes"}
-
-def fan_speed(fan, card, m2a=False):
-
-    try:
-        fan = int(fan)
-        card = int(card)
-    except(ValueError, TypeError):
-        print("WARNING: can't change fan speed, bad value")
-        text = "Can't change fan speed, bad value"
-        if m2a: return {"code": 100, "text": text}
-        return(False)
-    if fan < 0:
-        print("INFO: fan speed must be positive")
-        text = "Fan speed must be positive"
-        if m2a: return {"code": 100, "text": text}
-        return(False)
-    text = os.popen('nvidia-settings -a "[gpu:'+str(card)+']/GPUFanControlstate=1" -a ["fan:'+str(card*2)+']/GPUTargetFanSpeed='+str(fan)+'" -a ["fan:'+str(card*2+1)+']/GPUTargetFanSpeed='+str(fan)+'"').read()
-    if "assigned value" in text:
-        globals()["MEMBER"]["fan_mode"][card] = "manual"
-        print("INFO: "+text)
-        if m2a: return {"code": 200, "text": text, "data":{"fan_mode":"manual"}}
-        return(True)
-    else:
-        print("WARNING: can't change fan speed, NVIDIA error")
-        text = "Can't change fan speed, NVIDIA error"
-        if m2a: return {"code": 100, "text": text}
-        return(False)
 
 def mqtt_publish(contents, _topic="", retain=False, multiple=False):
     host = CONFIG["MQTT"]["HOST"]
@@ -674,7 +698,7 @@ def polls(interval):
                 periodic_check_limits(gpu_info["data"])
             #BD
             if "APP" in CONFIG:
-                save_to_db(gpu_info["data"])
+                save_to_db_gpu_info(gpu_info["data"])
             time.sleep(interval)
 
 def on_message(client, userdata, message):  #Здесь все команды получаемые ботом
@@ -777,7 +801,7 @@ def flask(CONFIG):
     else: port = int(CONFIG["APP"]["PORT_FLASK"])
     from waitress import serve
     print("Your IP(Gateway IP): {0}, Port(Gateway Port): {1}".format(address, port))
-    serve(app, host=address, port=port)
+    serve(app, host=address, port=port, threads=20)
 
 def socket_server(CONFIG):
     host = "0.0.0.0"
@@ -816,7 +840,7 @@ def socket_server(CONFIG):
 
             
         if data == "error_data":
-            conn.sendall({"code": 100, "text": "slave_pc not recieved request"})
+            conn.sendall(pickle.dumps({"code": 100, "text": "slave_pc not recieved request"}))
         else:
             #Code in slavePC
             if data[0] == "fan_speed": data = fan_speed(data[1][0], data[1][1], True)
@@ -827,7 +851,7 @@ def socket_server(CONFIG):
             elif data[0] == "check_limits": data = check_limits(data[1][0], False, data[1][1])
             elif data[0] == "get_gpu_info": data = get_gpu_info()
             elif data[0] == "m2a_ping": data = m2a_ping()
-            elif data[0] == "graph": data = load_from_db(data[1][0], data[1][1])
+            elif data[0] == "graph": data = load_from_db_gpu_info(data[1][0], data[1][1])
             else: data = {"code": 100, "text": "Bad request"}
             data = pickle.dumps(data)
             conn.sendall(data)
@@ -928,8 +952,50 @@ def connectToTrex():
                 print("WARNING: No data from Trex miner")
                 if "sys_params" in overload_limits: globals()["overload_limits"]["sys_params"][PC_NAME] = "No data from Trex miner"
                 else: globals()["overload_limits"].update({"sys_params":{PC_NAME:"No data from Trex miner"}})
+                
+def apply_params_on_start(cursor):
+    try:
+        cursor.execute("SELECT * FROM system_start_params")
+        data = cursor.fetchall()
+        print("Applying parameters on start:")
+        start_params = {}
+        if data:
+            for row in data:
+                if row[0] in start_params:
+                    start_params[row[0]].update({row[1]:row[2]})
+                else:
+                    start_params[row[0]] = {}
+                    start_params[row[0]].update({row[1]:row[2]})
 
-def load_from_db(pname, ptype):
+            for card, params in start_params.items():
+                if "power_limit" in params:
+                    p = subprocess.Popen(['sudo', '-S', 'nvidia-smi', '-i', str(card), '-pl', str(params["power_limit"])], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+                    text = p.communicate(CONFIG["SUDO_PASS"] + '\n')[0]
+                    print(text)
+                if "fan_mode" in params and params["fan_mode"] == "auto":
+                    text = os.popen('nvidia-settings -a "[gpu:'+str(card)+']/GPUFanControlstate=0"').read()
+                    print(text)
+                    continue
+                if "fan_speed" in params and "fan_mode" in params and params["fan_mode"] == "manual":
+                    text = os.popen('nvidia-settings -a "[gpu:'+str(card)+']/GPUFanControlstate=1" -a ["fan:'+str(card*2)+']/GPUTargetFanSpeed='+str(params["fan_speed"])+'" -a ["fan:'+str(card*2+1)+']/GPUTargetFanSpeed='+str(params["fan_speed"])+'"').read()
+                    print(text)
+        else: print("no parameters")
+    except Exception as e:
+        print(e)
+
+def save_to_db_start_params(ptype, pname, val):
+    sqlite_connection = sqlite3.connect(DB_PATCH)
+    cursor = sqlite_connection.cursor()
+    one_string = (ptype, pname, val)
+    try: cursor.execute('''INSERT OR REPLACE INTO system_start_params VALUES(?,?,?)''', one_string)
+    except Exception as e: 
+        print(e)
+        return "Error save value to DB"
+    sqlite_connection.commit()
+    sqlite_connection.close()
+    return "Successful save to db"
+
+def load_from_db_gpu_info(pname, ptype):
     sqlite_connection = sqlite3.connect(DB_PATCH)
     cursor = sqlite_connection.cursor()
     try:
@@ -942,7 +1008,7 @@ def load_from_db(pname, ptype):
         return {"code": 100, "text": "Error load from DB"}
 
 
-def save_to_db(gpu_info):
+def save_to_db_gpu_info(gpu_info):
     sqlite_connection = sqlite3.connect(DB_PATCH)
     cursor = sqlite_connection.cursor()
     now_datetime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -955,7 +1021,6 @@ def save_to_db(gpu_info):
                     try: cursor.execute('''INSERT INTO all_params VALUES(?,?,?,?)''', one_string)
                     except Exception as e: 
                         print(e)
-                        print(val)
                         break
         elif key == "sys_params":
             for pname, val in value.items():
@@ -1006,6 +1071,8 @@ if __name__ == '__main__':
     
     MEMBER = {"fan_state":[], "fan_mode":[], "fan_speed":[]} #Запоминаем всякую всячину
     SID = "" #SID for Trex
+    #limits
+    overload_limits = {}
     #Trex майнер
     connectToTrex()
     #Данила майнер
@@ -1023,7 +1090,8 @@ if __name__ == '__main__':
         AVG_hash_60 = []
         AVG_hash2_now = []
         AVG_hash2_60 = []
-        LHRtune = []
+        LHRtune = {}
+        lock_nums = {}
         GPUS = 0
         if "lol_command" in CONFIG: command = CONFIG["lol_command"]
         else: command = ""
@@ -1047,8 +1115,6 @@ if __name__ == '__main__':
             CONFIG["APP"]["PASS"] = hash_object.hexdigest()
     if "APP" in CONFIG:
         PC_NAME = "Gateway PC"
-        #limits
-        overload_limits = {}
         if os.path.exists(LIMITS_PATCH):
             with open(LIMITS_PATCH, "rb") as f:
                 LIMITS = pickle.load(f)
@@ -1060,9 +1126,15 @@ if __name__ == '__main__':
         cursor.execute("""CREATE TABLE if not exists all_params
                         (date timestamp, ptype text, pname text, value text)
                     """)
+
+        cursor.execute("""CREATE TABLE if not exists system_start_params
+                        (ptype INT, pname text, value INT, UNIQUE(ptype,pname))
+                    """)
         sqlite_connection.commit()
     except Exception as e:
         print(e)
+
+    apply_params_on_start(cursor)
     sqlite_connection.close()
             
 

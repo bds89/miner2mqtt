@@ -61,6 +61,11 @@
 
 - Исправление ошибок для [miner2android](https://github.com/bds89/miner2android) и `lol-miner`
 </details>
+<details>
+  <summary>1.5.4</summary>
+
+- При изменении мощности видекарты, скорости вентиляторов, режима вентилятора(авто, ручной), значения сохраняются и применяются при перезапуске.
+</details>
 </details>
 
 
