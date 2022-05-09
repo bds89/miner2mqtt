@@ -85,6 +85,7 @@
 **Поддерживаемые майнеры**
 
 - T-Rex
+- NBMiner
 - danila miner
 - lol miner
 
