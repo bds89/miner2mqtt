@@ -1,6 +1,6 @@
 MINER: lol-miner
-lolAPI: http://127.0.0.1:4067
-lol_command: C:\Users\bds89\Downloads\lolMiner_v1.44_Win64\1.44\dual_mine_eth_ton_tonwales.bat
+API: http://127.0.0.1:4067
+COMMAND: C:\Users\bds89\Downloads\lolMiner_v1.44_Win64\1.44\dual_mine_eth_ton_tonwales.bat
 SUDO_PASS: "pass"
 MQTT:
   TOPIC: miner2mqtt/rig1
@@ -14,5 +14,6 @@ APP:
   IP_FLASK: 192.168.0.101
   PORT_FLASK: 5000
   SLAVE_PC: false
+  PORT_SOCKET: 5100
   SESSIONKEY: "1111"
   PASS: "mobileAppPass"

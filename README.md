@@ -67,6 +67,12 @@
 - При изменении мощности видекарты, скорости вентиляторов, режима вентилятора(авто, ручной), значения сохраняются и применяются при перезапуске.
 </details>
 </details>
+<details>
+  <summary>1.6</summary>
+
+- Поддержка NBMiner
+- Изменение конфига: Параметры `TrexAPI`, `lolAPI` заменены на общий параметр `API`. Параметры `danila_command`, `lol_command` заменены на общий параметр `COMMAND`. 
+</details>
 
 
 ## Описание
@@ -133,18 +139,16 @@
   
 ## Редактирование config.yaml:
 ```yaml
-MINER: Trex/danila-miner/lol-miner
+MINER: Trex/danila-miner/lol-miner/NBMiner
     #выбор GPU майнера (не обязательно)
-danila_command: "/home/ferma2/TON_miner/danila-miner run https://server1.whalestonpool.com your_walet_adress"
-    #Команда для запуска danila-miner(*обязательно, если используется `danila-miner`)
-lol_command: /home/bds89/lolMiner_v1.44_Lin64/1.44/dual_mine_eth_ton.sh
-    #Команда для запуска lol-miner(не обязательно, при запуске майнера скриптом m2m в mqtt будет передаваться дополнитльный параметр `lhrtune`)
-TrexAPI: http://127.0.0.1:4067
-    #адрес API для Trex майнера, если отличается от стандартного
+COMMAND: "/home/ferma2/TON_miner/danila-miner run https://server1.whalestonpool.com your_walet_adress"
+    #Пример команды для запуска danila-miner(*обязательно, если используется `danila-miner`)
+COMMAND: /home/bds89/lolMiner_v1.44_Lin64/1.44/dual_mine_eth_ton.sh
+    #Пример команды для запуска lol-miner(не обязательно, при запуске майнера скриптом m2m в mqtt будут передаваться дополнитльные параметры `lhrtune`, `re-calibrate`)
+API: http://127.0.0.1:4067
+    #Адрес API для майнера, если отличается от стандартного, можно не укаывать, если арес и порт совпадают со значением по умолчанию: `http://127.0.0.1:4067`
 TrexAPIPASS: YourWebGuiPassword
     #ваш пароль для Trex майнера
-lolAPI: http://127.0.0.1:4067
-    #адрес API для lol майнера (обязательно если ипользуется `lol-miner`)
 SUDO_PASS: pass
     #пароль суперпользователя, для изменения power_limit, только для Linux
 MQTT: #(не обязательно, если используете только для мобильного приложения, этот блок можно убрать)
@@ -165,6 +169,7 @@ APP: #(не обязательно, если используете только
   IP_FLASK: 192.168.0.101 #IP вашего компьютера в локальной сети, обязательно для Windows, для Linux скрипт попытается найти самостоятельно 
   PORT_FLASK: 5000 #(не обязательно)
   SLAVE_PC: false #(не обязательно, если данный компьютер будет подключаться к мобильному приложению чере другой компьютер, укажите `true`)
+  PORT_SOCKET: 5100 #(только для `SLAVE_PC: true`, не обязательно)
   SESSIONKEY: "1111" #любой набор символов(не обязательно, при отсутствии будет использоваться литерал из кода)
   PASS: "mobileAppPass" #пароль для подключения мобильного приложения (*не обязательно)
 ```
@@ -352,5 +357,3 @@ number:
 
 ## Планы
 - Windows
-- cpuminer-gr-avx2
-- Android APP

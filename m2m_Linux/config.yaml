@@ -1,6 +1,6 @@
-MINER: lol-miner
-lolAPI: http://127.0.0.1:4067
-lol_command: "/home/bds4/lolMiner_v1.44_Lin64/1.44/dual_mine_eth_ton.sh"
+MINER: NBMiner
+API: http://127.0.0.1:4067
+COMMAND: "/home/user/NBMiner_41.0_Linux/NBMiner_Linux/start_eth.sh"
 SUDO_PASS: "pass"
 MQTT:
   TOPIC: miner2mqtt/rig1
@@ -14,5 +14,6 @@ APP:
   IP_FLASK: 192.168.0.101
   PORT_FLASK: 5000
   SLAVE_PC: false
+  PORT_SOCKET: 5100
   SESSIONKEY: "1111"
   PASS: "mobileAppPass"

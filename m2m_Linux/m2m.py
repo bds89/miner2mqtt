@@ -1,5 +1,6 @@
 # from asyncio import threads
 # from concurrent.futures import thread
+from concurrent.futures import thread
 from curses import savetty
 from unicodedata import numeric
 import yaml, datetime, time, sys, threading, urllib.request, inspect, os, json, platform, requests, re, subprocess, psutil, socket, pickle, hashlib, sqlite3
@@ -10,6 +11,7 @@ from flask import Flask, request, session
 bool_conv = {"true": "ON", "false": "OFF", "ON":True, "OFF":False, "0":"auto", "1": "manual"}
 app = Flask(__name__)
 lock = threading.Lock()
+
 lol_adapter_dict = {
     "Index":"device_id",
     "Fan_Speed":"fan_speed",
@@ -17,6 +19,17 @@ lol_adapter_dict = {
     "Core_Temp":"temperature",
     "Power":"power",
     "vendor":""
+}
+
+nb_adapter_dict = {
+    "core_clock":"CCLK",
+    "fan":"fan_speed",
+    "info":"name",
+    "mem_clock":"MCLK",
+    "lhr":"LHR",
+    "id":"device_id",
+    "hashrate_raw":"hashrate",
+    "hashrate2_raw":"hashrate2",
 }
 def get_script_dir(follow_symlinks=True):
     if getattr(sys, 'frozen', False): # py2exe, PyInstaller, cx_Freeze
@@ -27,6 +40,25 @@ def get_script_dir(follow_symlinks=True):
         path = os.path.realpath(path)
     return os.path.dirname(path)
 
+def value_to_SI(value, dict):
+    suffs = ""
+    for suff in dict.keys():
+        suffs += suff
+    find_str = f"(\d+\.\d+).*([{suffs}])"
+    match = re.findall(find_str, value)
+    if len(match) == 2:
+        return (int(match[0])*dict[match[1]])
+    elif len(match) == 1:
+        return (int(match[0]))
+    else:
+        find_str = f"(\d+).*([{suffs}])"
+        match = re.findall(find_str, value)
+        if len(match) == 2:
+            return (int(match[0])*dict[match[1]])
+        elif len(match) == 1:
+            return (int(match[0]))
+        else:
+            return value
 def run(command, std_type):
     if ("SUDO_PASS" in CONFIG):
         p = subprocess.Popen(['sudo', '-S', 'pwd'], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
@@ -42,9 +74,11 @@ def run(command, std_type):
             if std_type == "err": line = process.stderr.readline().rstrip()
             elif std_type == "out": line = process.stdout.readline().rstrip()
             else: break
-        except(UnicodeDecodeError):
+        except(UnicodeDecodeError) as e:
+            print(e)
             pass
         if not line and process.poll() != None:
+            print("process stoped")
             break
         yield line
 
@@ -63,6 +97,62 @@ def danila_parser(command, std_type):
             delta_time = matches[0][3]
             globals()["SHARES"] = matches[0][4]
 
+def nb_parser(command, std_type):
+    if command:
+        for log in run(command, std_type):
+            print(">: "+log)
+            if "API" in CONFIG:
+                url = str(CONFIG["API"])+"/api/v1/status"
+                if re.search(r"Summary", log):
+                    try:
+                        contents = urllib.request.urlopen(url).read()
+                        data = json.loads(contents)
+                        time_timestam = datetime.datetime.now()
+                        if not GPUS: globals()["GPUS"] = len(data["miner"]["devices"])
+                        for i in range(GPUS):
+                            if len(AVG_hash_now) < i+1:
+                                AVG_hash_now.append({})
+                                AVG_hash2_now.append({})
+                                AVG_hash_60.append({})
+                                AVG_hash2_60.append({})
+                            globals()["AVG_hash_now"][i].update({time_timestam:data["miner"]["devices"][0]["hashrate_raw"]})
+                            globals()["AVG_hash_60"][i].update({time_timestam:data["miner"]["devices"][0]["hashrate_raw"]})
+                            if data["stratum"]["dual_mine"] == "true":
+                                globals()["AVG_hash2_now"][i].update({time_timestam:data["miner"]["devices"][0]["hashrate2_raw"]})
+                                globals()["AVG_hash2_60"][i].update({time_timestam:data["miner"]["devices"][0]["hashrate2_raw"]})
+                    except Exception as e:
+                        print("WARNING: No data from NBMiner API")
+                        print(e)
+                        if "sys_params" in overload_limits: globals()["overload_limits"]["sys_params"][PC_NAME] = "No data from NBMiner"
+                        else: globals()["overload_limits"].update({"sys_params":{PC_NAME:"No data from NBMiner"}})
+
+    else:
+        if "API" in CONFIG:
+            url = str(CONFIG["API"])+"/api/v1/status"
+            while True:
+                try:
+                    contents = urllib.request.urlopen(url).read()
+                    data = json.loads(contents)
+                    time_timestam = datetime.datetime.now()
+                    if not GPUS: globals()["GPUS"] = len(data["miner"]["devices"])
+                    for i in range(GPUS):
+                        if len(AVG_hash_now) < i+1:
+                            AVG_hash_now.append({})
+                            AVG_hash2_now.append({})
+                            AVG_hash_60.append({})
+                            AVG_hash2_60.append({})
+                        globals()["AVG_hash_now"][i].update({time_timestam:data["miner"]["devices"][0]["hashrate_raw"]})
+                        globals()["AVG_hash_60"][i].update({time_timestam:data["miner"]["devices"][0]["hashrate_raw"]})
+                        if data["stratum"]["dual_mine"]:
+                            globals()["AVG_hash2_now"][i].update({time_timestam:data["miner"]["devices"][0]["hashrate2_raw"]})
+                            globals()["AVG_hash2_60"][i].update({time_timestam:data["miner"]["devices"][0]["hashrate2_raw"]})
+                except Exception as e:
+                    print("WARNING: No data from NBMiner API")
+                    print(e)
+                    if "sys_params" in overload_limits: globals()["overload_limits"]["sys_params"][PC_NAME] = "No data from NBMiner"
+                    else: globals()["overload_limits"].update({"sys_params":{PC_NAME:"No data from NBMiner"}})
+                time.sleep(18)
+
 def lol_parser(command, std_type):
     name_hash = ""
     if command:
@@ -70,7 +160,7 @@ def lol_parser(command, std_type):
         ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
         for log in run(command, std_type):
             print(">: "+log)
-            if "lolAPI" in CONFIG:
+            if "API" in CONFIG:
                 if log.find("--lhrtune") != -1: lhrtune_str = log.find("--lhrtune")
                 if log.find("LHR") != -1: lhrtune_str = log.find("LHR")
                 GPU_num = re.findall(r"GPU (.+):.need.to", log)
@@ -90,7 +180,7 @@ def lol_parser(command, std_type):
                 if matches:
                     if not name_hash: name_hash = matches[0][0]
                     if name_hash == matches[0][0]:
-                        url = str(CONFIG["lolAPI"])
+                        url = str(CONFIG["API"])
                         try:
                             contents = urllib.request.urlopen(url).read()
                             data = json.loads(contents)
@@ -116,8 +206,8 @@ def lol_parser(command, std_type):
                             print("WARNING: No data from lol-miner API")
                             if "sys_params" in overload_limits: globals()["overload_limits"]["sys_params"][PC_NAME] = "No data from lol-miner"
                             else: globals()["overload_limits"].update({"sys_params":{PC_NAME:"No data from lol-miner"}})
-    elif "lolAPI" in CONFIG:
-        url = str(CONFIG["lolAPI"])
+    elif "API" in CONFIG:
+        url = str(CONFIG["API"])
         while True:
             try:
                 contents = urllib.request.urlopen(url).read()
@@ -157,7 +247,7 @@ def get_gpu_info():
     if "MINER" in CONFIG:
         if CONFIG["MINER"] == "Trex":
             try:
-                if "TrexAPI" in CONFIG: url1 = str(CONFIG["TrexAPI"])
+                if "API" in CONFIG: url1 = str(CONFIG["API"])
                 else: url1 = "http://127.0.0.1:4067"
                 if globals()["SID"]: url = url1+"/summary?sid="+SID
                 else: url = url1+"/summary"
@@ -174,6 +264,88 @@ def get_gpu_info():
             except:
                 print("WARNING: No data from Trex miner. Trying to reconnect")
                 connectToTrex()
+        #NBMiner
+        elif CONFIG["MINER"] == "NBMiner":
+            try:
+                if "API" in CONFIG: url1 = str(CONFIG["API"])
+                else: url1 = "http://127.0.0.1:4067"
+                url = url1+"/api/v1/status"
+                contents = urllib.request.urlopen(url).read()
+                globals()["CONTENTS"] = contents
+                data_nb = json.loads(contents)
+
+                data = {}
+                data["hashrate"] = data_nb["miner"]["total_hashrate_raw"]
+                data["dual_mine"] = data_nb["stratum"]["dual_mine"]
+                if data_nb["stratum"]["dual_mine"]: data["hashrate2"] = data_nb["miner"]["total_hashrate2_raw"]
+                data["reboot_times"] = data_nb["reboot_times"]
+                data["uptime"] = time.time() - int(data_nb["start_time"])
+                data["accepted_shares"] = data_nb["stratum"]["accepted_shares"]
+                data["invalid_shares"] = data_nb["stratum"]["invalid_shares"]
+                data["reboot_times"] = data_nb["reboot_times"]
+                data["gpu_total"] = len(data_nb["miner"]["devices"])
+
+                #GPUS
+                data["gpus"] = []
+                for num, gpu in enumerate(data_nb["miner"]["devices"]):
+                    data["gpus"].append(dict_rename_keys(gpu, nb_adapter_dict))
+
+                    if not data_nb["stratum"]["dual_mine"]: data["gpus"][num].pop('hashrate2')
+                    #efficiency
+                    if data["gpus"][num]["power"] != 0:
+                        data["gpus"][num].update({"efficiency":round(data["gpus"][num]["hashrate"]/data["gpus"][num]["power"])})
+                        if data_nb["stratum"]["dual_mine"]: data["gpus"][num].update({"efficiency2":round(data["gpus"][num]["hashrate2"]/data["gpus"][num]["power"])})
+                    else: 
+                        data["gpus"][num].update({"efficiency":0})
+                        if data_nb["stratum"]["dual_mine"]: data["gpus"][num].update({"efficiency2":0})
+                #обновим средний хэш
+                i = 0
+                for num_gpu in range(GPUS):
+                    hash_1 = 0
+                    hash2_1 = 0
+                    if AVG_hash_now[num_gpu]:
+                        for time_st in list(AVG_hash_now[num_gpu]):
+                            if datetime.datetime.now() - time_st < datetime.timedelta(seconds=60):
+                                hash_1 += AVG_hash_now[num_gpu][time_st]
+                                if AVG_hash2_now and time_st in AVG_hash2_now[num_gpu]:
+                                    hash2_1 += AVG_hash2_now[num_gpu][time_st]
+                                i += 1
+                            else:
+                                AVG_hash_now[num_gpu].pop(time_st)
+                                if AVG_hash2_now and time_st in AVG_hash2_now[num_gpu]:
+                                    AVG_hash2_now[num_gpu].pop(time_st)
+                        if i > 0: 
+                            hash_1 = round(hash_1/i, 2)
+                            hash2_1 = round(hash2_1/i, 2)
+                    if len(data["gpus"]) > num_gpu:
+                        data["gpus"][num_gpu].update({"hashrate_minute":hash_1})
+                        if AVG_hash2_now:
+                            data["gpus"][num_gpu].update({"hashrate_minute2":hash2_1})
+
+                    i = 0
+                    hash_60 = 0
+                    hash2_60 = 0
+                    if AVG_hash_60[num_gpu]:
+                        for time_st in list(AVG_hash_60[num_gpu]):
+                            if datetime.datetime.now() - time_st < datetime.timedelta(minutes=60):
+                                hash_60 += AVG_hash_60[num_gpu][time_st]
+                                if AVG_hash2_60 and time_st in AVG_hash2_60[num_gpu]:
+                                    hash2_60 += AVG_hash2_60[num_gpu][time_st]
+                                i += 1
+                            else:
+                                AVG_hash_60[num_gpu].pop(time_st)
+                                if AVG_hash2_60 and time_st in AVG_hash2_60[num_gpu]:
+                                    AVG_hash2_60[num_gpu].pop(time_st)
+                        if i > 0: 
+                            hash_60 = round(hash_60/i, 2)
+                            hash2_60 = round(hash2_60/i, 2)
+                    if len(data["gpus"]) > num_gpu:
+                        data["gpus"][num_gpu].update({"hashrate_hour":hash_60})
+                        if AVG_hash2_60:
+                            data["gpus"][num_gpu].update({"hashrate_hour2":hash2_60})
+            except Exception as e:
+                print(e)
+                print("WARNING: No data from NBMiner miner. Trying to reconnect")
         #Для данилы
         elif CONFIG["MINER"] == "danila-miner":
             #обновим средний хэш
@@ -255,9 +427,9 @@ def get_gpu_info():
                 except:
                     print("WARNING: No data from Nvidia")
         #Для lol-miner
-        elif CONFIG["MINER"] == "lol-miner" and "lolAPI" in CONFIG:
+        elif CONFIG["MINER"] == "lol-miner" and "API" in CONFIG:
             data = {"gpus":[], "uptime":""}
-            url = str(CONFIG["lolAPI"])
+            url = str(CONFIG["API"])
             try:
                 contents = urllib.request.urlopen(url).read()
                 lol_data = json.loads(contents)
@@ -304,13 +476,15 @@ def get_gpu_info():
                             i += 1
                         else:
                             AVG_hash_now[num_gpu].pop(time_st)
-                            AVG_hash2_now[num_gpu].pop(time_st)
+                            if AVG_hash2_now and time_st in AVG_hash2_now[num_gpu]:
+                                AVG_hash2_now[num_gpu].pop(time_st)
                     if i > 0: 
                         hash_1 = round(hash_1/i, 2)
                         hash2_1 = round(hash2_1/i, 2)
                 if len(data["gpus"]) > num_gpu:
                     data["gpus"][num_gpu].update({"hashrate_minute":hash_1})
-                    data["gpus"][num_gpu].update({"hashrate_minute2":hash2_1})
+                    if AVG_hash2_now:
+                        data["gpus"][num_gpu].update({"hashrate_minute2":hash2_1})
 
                 i = 0
                 hash_60 = 0
@@ -324,13 +498,15 @@ def get_gpu_info():
                             i += 1
                         else:
                             AVG_hash_60[num_gpu].pop(time_st)
-                            AVG_hash2_60[num_gpu].pop(time_st)
+                            if AVG_hash2_60 and time_st in AVG_hash2_60[num_gpu]:
+                                AVG_hash2_60[num_gpu].pop(time_st)
                     if i > 0: 
                         hash_60 = round(hash_60/i, 2)
                         hash2_60 = round(hash2_60/i, 2)
                 if len(data["gpus"]) > num_gpu:
                     data["gpus"][num_gpu].update({"hashrate_hour":hash_60})
-                    data["gpus"][num_gpu].update({"hashrate_hour2":hash2_60})
+                    if AVG_hash2_60:
+                        data["gpus"][num_gpu].update({"hashrate_hour2":hash2_60})
 
         else: print("WARNING: unknown miner or no API")
     else:
@@ -402,12 +578,13 @@ def get_gpu_info():
     data_answ = {"code": 200, "text": "success", "data": answ}
     #add limits
     if "LIMITS" in globals(): data_answ["limits"] = LIMITS
+    # print("========================"); print(data_answ); print("=============================")
     return(data_answ)
 
 def gpu_pause(pause, card):
     if "MINER" in CONFIG:
         if CONFIG["MINER"] == "Trex":
-            if "TrexAPI" in CONFIG: url1 = str(CONFIG["TrexAPI"])
+            if "API" in CONFIG: url1 = str(CONFIG["API"])
             else: url1 = "http://127.0.0.1:4067"
             if "SID" in globals(): url = url1+"/control?sid="+SID
             else: url = url1+"/control"
@@ -938,7 +1115,7 @@ def isauth(pc):
 def connectToTrex():
     if "MINER" in CONFIG and CONFIG["MINER"] == "Trex":
         if "TrexAPIPASS" in CONFIG:
-            if "TrexAPI" in CONFIG: url1 = str(CONFIG["TrexAPI"])
+            if "API" in CONFIG: url1 = str(CONFIG["API"])
             else: url1 = "http://127.0.0.1:4067"
             password = str(CONFIG["TrexAPIPASS"])
             try: 
@@ -1075,6 +1252,18 @@ if __name__ == '__main__':
     overload_limits = {}
     #Trex майнер
     connectToTrex()
+    #NBMiner
+    if "MINER" in CONFIG and CONFIG["MINER"] == "NBMiner":
+        CONVERT = {"k":1*10**3, "K":1*10**3, "M":1*10**6, "G":1*10**9}
+        AVG_hash_now = []
+        AVG_hash_60 = []
+        AVG_hash2_now = []
+        AVG_hash2_60 = []
+        GPUS = 0
+        if "COMMAND" in CONFIG: command = CONFIG["COMMAND"]
+        else: command = ""
+        threading.Thread(target=nb_parser, args=(command.split(), "err",)).start() #запускаем NBMiner
+        time.sleep(5)
     #Данила майнер
     if "MINER" in CONFIG and CONFIG["MINER"] == "danila-miner":
         CONVERT = {"k":1*10**3, "K":1*10**3, "M":1*10**6, "G":1*10**9}
@@ -1082,7 +1271,8 @@ if __name__ == '__main__':
         AVG_hash_60 = {}
         SHARES = 0
         GPUS = 0
-        threading.Thread(target=danila_parser, args=(CONFIG["danila_command"].split(), "err",)).start() #запускаем данилу
+        threading.Thread(target=danila_parser, args=(CONFIG["COMMAND"].split(), "err",)).start() #запускаем данилу
+        time.sleep(5)
     #Lol майнер
     if "MINER" in CONFIG and CONFIG["MINER"] == "lol-miner":
         CONVERT = {"k":1*10**3, "K":1*10**3, "M":1*10**6, "G":1*10**9}
@@ -1093,9 +1283,10 @@ if __name__ == '__main__':
         LHRtune = {}
         lock_nums = {}
         GPUS = 0
-        if "lol_command" in CONFIG: command = CONFIG["lol_command"]
+        if "COMMAND" in CONFIG: command = CONFIG["COMMAND"]
         else: command = ""
         threading.Thread(target=lol_parser, args=(command.split(), "out",)).start() #запускаем LolMiner
+        time.sleep(5)
 
     if "MQTT" in CONFIG:
         threading.Thread(target=mqtt_listen, args=(CONFIG["MQTT"]["TOPIC"],CONFIG["MQTT"]["HOST"],CONFIG["MQTT"]["USERNAME"],CONFIG["MQTT"]["PASS"],)).start() #подписываемся на топик
