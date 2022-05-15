@@ -2,12 +2,14 @@
 # from concurrent.futures import thread
 from concurrent.futures import thread
 from curses import savetty
+from lib2to3.pgen2.token import STAR
 from unicodedata import numeric
-import yaml, datetime, time, sys, threading, urllib.request, inspect, os, json, platform, requests, re, subprocess, psutil, socket, pickle, hashlib, sqlite3
+import yaml, datetime, time, sys, threading, urllib.request, inspect, os, json, platform, requests, re, subprocess, psutil, socket, pickle, hashlib, sqlite3, signal
 import paho.mqtt.subscribe as subscribe
 import paho.mqtt.publish as publish
 from flask import Flask, request, session
 
+STOP, START, RUNNING, RESTART = range(4)
 bool_conv = {"true": "ON", "false": "OFF", "ON":True, "OFF":False, "0":"auto", "1": "manual"}
 app = Flask(__name__)
 lock = threading.Lock()
@@ -30,7 +32,6 @@ nb_adapter_dict = {
     "id":"device_id",
     "hashrate_raw":"hashrate",
     "hashrate2_raw":"hashrate2",
-    "vendor":""
 }
 def get_script_dir(follow_symlinks=True):
     if getattr(sys, 'frozen', False): # py2exe, PyInstaller, cx_Freeze
@@ -60,28 +61,82 @@ def value_to_SI(value, dict):
             return (int(match[0]))
         else:
             return value
-def run(command, std_type):
+
+def kill_proc_tree(pid):
+    parent = psutil.Process(pid)
+    children = parent.children(recursive=True)
     if ("SUDO_PASS" in CONFIG):
         p = subprocess.Popen(['sudo', '-S', 'pwd'], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
         p.communicate(CONFIG["SUDO_PASS"] + '\n')
-        process = subprocess.Popen(["sudo", "-S"]+command, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, shell=False, encoding="utf-8", bufsize=1, universal_newlines=True)
-        print("start with SUDO")
-    else: 
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, shell=False, encoding="utf-8", bufsize=1, universal_newlines=True)
-        print("start without SUDO")
-        
+    for p in children:
+        print(f"Terminate process: {p.pid}")
+        subprocess.Popen(args=f"sudo kill {p.pid}", shell=True)
+
+
+def run(command, std_type):
+    state = "unknown"
     while True:
-        try:
-            if std_type == "err": line = process.stderr.readline().rstrip()
-            elif std_type == "out": line = process.stdout.readline().rstrip()
-            else: break
-        except(UnicodeDecodeError) as e:
-            print(e)
-            pass
-        if not line and process.poll() != None:
-            print("process stoped")
-            break
-        yield line
+        if RUN_STATE == STOP:
+            if state != "Stop":
+                state = "Stop"
+                mqtt_publish(state, "/from_miner/miner_state")
+            if not "process" in locals() or ("process" in locals() and process.poll() != None):
+                time.sleep(3)
+                continue
+            else:
+                pid = os.getpgid(process.pid)
+                print(kill_proc_tree(pid))
+                time.sleep(5)
+                continue
+        elif RUN_STATE == START:
+            if state != "Start":
+                state = "StStartop"
+                mqtt_publish(state, "/from_miner/miner_state")
+            if not "process" in locals() or ("process" in locals() and process.poll() != None):
+                if ("SUDO_PASS" in CONFIG):
+                    p = subprocess.Popen(['sudo', '-S', 'pwd'], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+                    p.communicate(CONFIG["SUDO_PASS"] + '\n')
+                    process = subprocess.Popen(["sudo", "-S"]+command, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, shell=False, encoding="utf-8", bufsize=1, universal_newlines=True)
+                    print(f"start with SUDO process: {process.pid}")
+                else: 
+                    process = subprocess.Popen(command, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, shell=False, encoding="utf-8", bufsize=1, universal_newlines=True)
+                    print("start without SUDO")
+                globals()["RUN_STATE"] = RUNNING
+                continue
+            else:
+                pid = os.getpgid(process.pid)
+                print(kill_proc_tree(pid))
+                time.sleep(5)
+                continue
+        elif RUN_STATE == RUNNING:
+            if state != "Running":
+                state = "Running"
+                mqtt_publish(state, "/from_miner/miner_state")
+            try:
+                if std_type == "err": line = process.stderr.readline().rstrip()
+                elif std_type == "out": line = process.stdout.readline().rstrip()
+                else: break
+            except(UnicodeDecodeError) as e:
+                print(e)
+                pass
+            if not line and process.poll() != None:
+                print("Miner process stoped")
+                globals()["RUN_STATE"] = STOP
+            yield line
+        elif RUN_STATE == RESTART:
+            if state != "Restart":
+                state = "Restart"
+                mqtt_publish(state, "/from_miner/miner_state")
+            if not "process" in locals() or ("process" in locals() and process.poll() != None):
+                globals()["RUN_STATE"] = START
+                continue
+            else:
+                pid = os.getpgid(process.pid)
+                print(kill_proc_tree(pid))
+                globals()["RUN_STATE"] = START
+                time.sleep(5)
+                continue
+ 
 
 def danila_parser(command, std_type):
     for log in run(command, std_type):
@@ -696,6 +751,24 @@ def fan_speed(fan, card, m2a=False):
         if m2a: return {"code": 100, "text": text}
         return(False)
 
+def miner_state(state, m2a=False):
+    state_list = ["Stop", "Start", "Running", "Restart"]
+    text = ""
+    if re.search(r"[Ss][Tt][Oo][Pp]", state): 
+        globals()["RUN_STATE"] = STOP
+        text += state_list[RUN_STATE]
+    elif re.search(r"[Rr][Ee][Ss][Tt][Aa][Rr][Tt]", state): 
+        globals()["RUN_STATE"] = RESTART
+        text += state_list[RUN_STATE]
+    elif re.search(r"[Ss][Tt][Aa][Rr][Tt]", state): 
+        globals()["RUN_STATE"] = START
+        text += state_list[RUN_STATE]
+    elif state == "Refresh" and m2a: 
+        text += state_list[RUN_STATE]
+    else: text += "Unknown state"
+    if m2a: return {"code": 200, "text": text}
+    return(True)
+
 
 @app.route('/get_fan_mode', methods=['POST'])
 def m2a_get_fan_mode(card=False):  #Получить режим вентилятора
@@ -755,6 +828,7 @@ def m2a_control():
                 if request_data["ex_IP"] == "" or request_data["in_IP"] == "" or request_data["request"] == "check_limits":
                     if request_data["request"] == "fan_speed": return json.dumps(fan_speed(request_data["value"], request_data["card"], True))
                     elif request_data["request"] == "fan_mode": return json.dumps(fan_mode(request_data["value"], request_data["card"], True))
+                    elif request_data["request"] == "miner_state": return json.dumps(miner_state(request_data["value"], True))
                     elif request_data["request"] == "power_limit": return json.dumps(power_limit(request_data["value"], request_data["card"], True))
                     elif request_data["request"] == "send_limits": return json.dumps(send_limits(request_data["value"]))
                     elif request_data["request"] == "check_limits":
@@ -765,7 +839,7 @@ def m2a_control():
                     
                 host = request_data["in_IP"]
                 port = int(request_data["in_port"])
-                if request_data["request"] == "send_limits": params = [request_data["value"]]
+                if request_data["request"] == "send_limits" or request_data["request"] == "miner_state": params = [request_data["value"]]
                 elif request_data["request"] == "graph": params = [request_data["pname"], request_data["ptype"]]
                 else: params = [request_data["value"], request_data["card"]]
                 data = socket_client(host, port, request_data['request'], params)
@@ -955,6 +1029,12 @@ def on_message(client, userdata, message):  #Здесь все команды п
                 mqtt_publish(json.dumps(gpu_info["data"]))
         return
 
+    #Изменение miner_state
+    if re.search(CONFIG["MQTT"]["TOPIC"]+r"/to_miner/miner_state", topic):
+        print(topic +": "+msg)
+        miner_state(msg)
+        return
+
 def mqtt_listen(topic, host, username, password):
     while True:
         topic = topic+"/to_miner/#"
@@ -1025,6 +1105,7 @@ def socket_server(CONFIG):
             elif data[0] == "fan_mode": data = fan_mode(data[1][0], data[1][1], True)
             elif data[0] == "power_limit": data = power_limit(data[1][0], data[1][1], True)
             elif data[0] == "send_limits": data = send_limits(data[1][0])
+            elif data[0] == "miner_state": data = miner_state(data[1][0], True)
             elif data[0] == "m2a_get_fan_mode": data = m2a_get_fan_mode(data[1][0])
             elif data[0] == "check_limits": data = check_limits(data[1][0], False, data[1][1])
             elif data[0] == "get_gpu_info": data = get_gpu_info()
@@ -1248,6 +1329,7 @@ if __name__ == '__main__':
         CONFIG = yaml.load(f.read(), Loader=yaml.FullLoader)
     
     MEMBER = {"fan_state":[], "fan_mode":[], "fan_speed":[]} #Запоминаем всякую всячину
+    RUN_STATE = START
     SID = "" #SID for Trex
     #limits
     overload_limits = {}

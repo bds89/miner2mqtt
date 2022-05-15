@@ -72,6 +72,12 @@
 
 - Поддержка NBMiner
 - Изменение конфига: Параметры `TrexAPI`, `lolAPI` заменены на общий параметр `API`. Параметры `danila_command`, `lol_command` заменены на общий параметр `COMMAND`. 
+
+<details>
+  <summary>1.6.1</summary>
+
+- Добавлена возможность остановить/запустить/перезапустить майнер из приложения или MQTT. Для этого опубликуйте `Stop`, `Start`, `Restart` в `ваш_топик/to_miner/miner_state` (есть пример сущности для Home Assistant). Текущее состояние майнера можно получить в `ваш_топик/from_miner/miner_state`. Для управления процессом майнера, необходимо что-бы `miner2mqtt` сам запускал майнер командой из `COMMAND`.
+</details>
 </details>
 
 
@@ -99,6 +105,7 @@
 - Изменение скорости: публикация значения в процентах в топик `ваш_топик/to_miner/<GPU_number>/fan_speed`, топик с текущими значениями в процентах `ваш_топик/from_miner/<GPU_number>/fan_speed`. 
 - Включение вентилятора: публикация значения `ON` в топик `ваш_топик/to_miner/<GPU_number>/fan_state`, топик с текущим состоянием `ваш_топик/from_miner/<GPU_number>/fan_state`.
 - Изменение режима auto/manual: публикация значения `auto` / `manual`в топик `ваш_топик/to_miner/<GPU_number>/fan_mode`, топик с текущим режимом `ваш_топик/from_miner/<GPU_number>/fan_mode`.
+- Остановка/Запуск/Перезапуск майнера.
 </details>
 <details>
   <summary>Управление power limit видеокарт (version 1.1+)</summary>
@@ -353,6 +360,22 @@ number:
     icon: mdi:lightning-bolt-circle
     min: 100
     max: 240
+```
+</details>
+<details>
+  <summary>Miner state</summary>
+
+```yaml
+select:
+    - platform: mqtt
+      command_topic: "miner2mqtt/rig0/to_miner/miner_state"
+      state_topic: "miner2mqtt/rig0/from_miner/miner_state"
+      name: "Rig0 Miner State"
+      options:
+      - "Start"
+      - "Stop"
+      - "Restart"
+      - "Running"
 ```
 </details>
 
