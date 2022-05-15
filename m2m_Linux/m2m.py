@@ -32,6 +32,7 @@ nb_adapter_dict = {
     "id":"device_id",
     "hashrate_raw":"hashrate",
     "hashrate2_raw":"hashrate2",
+    "vendor":""
 }
 def get_script_dir(follow_symlinks=True):
     if getattr(sys, 'frozen', False): # py2exe, PyInstaller, cx_Freeze
